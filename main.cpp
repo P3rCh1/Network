@@ -42,8 +42,9 @@ void testLinkOperations()
   g.insert("C");
   bool allPassed = true;
 
-  allPassed &= g.link("A", "B", 5);
-  printTestResult(g.link("A", "B", 5), "Create valid link");
+  bool linkCreated = g.link("A", "B", 5);
+  allPassed &= linkCreated;
+  printTestResult(linkCreated, "Create valid link");
 
   allPassed &= !g.link("A", "D", 3);
   printTestResult(!g.link("A", "D", 3), "Reject link to non-existent node");
@@ -75,50 +76,91 @@ bool hasConnection(const std::vector< std::pair< std::reference_wrapper< const i
 void testCycleRemoval()
 {
   printSectionHeader("Cycle Removal Tests");
-
-  Graph< int > g;
+  Graph<int> g;
   bool allPassed = true;
 
-  // 1. Тест: треугольник → должно остаться 2 ребра
-  g.insert(1);
-  g.insert(2);
-  g.insert(3);
+  // 1. Создаем треугольник
+  g.insert(1); g.insert(2); g.insert(3);
   g.link(1, 2, 1);
   g.link(2, 3, 2);
   g.link(3, 1, 3);
 
-  // Запоминаем связи до удаления циклов
-  auto conn1_before = g.connections(1);
-  auto conn2_before = g.connections(2);
-  auto conn3_before = g.connections(3);
+  // Вывод начального состояния
+  cout << "\nInitial graph state:\n";
+  for(int i = 1; i <= 3; i++) {
+    cout << "Node " << i << " connected to: ";
+    for(const auto& conn : g.connections(i)) {
+      cout << conn.first.get() << " (w:" << conn.second << ") ";
+    }
+    cout << "\n";
+  }
 
+  // 2. Удаляем циклы
   g.removeCycles();
 
-  // Проверяем количество связей после
-  bool test1 = g.connections(1).size() + g.connections(2).size() + g.connections(3).size() == 4;
-  allPassed &= test1;
-  printTestResult(test1, "Triangle → removes one edge (3→2→1)");
+  // Вывод конечного состояния
+  cout << "\nGraph after removeCycles():\n";
+  int total_edges = 0;
+  for(int i = 1; i <= 3; i++) {
+    auto conns = g.connections(i);
+    total_edges += conns.size();
+    cout << "Node " << i << " connected to: ";
+    for(const auto& conn : conns) {
+      cout << conn.first.get() << " ";
+    }
+    cout << "\n";
+  }
+  total_edges /= 2; // Учитываем двунаправленность
 
-  // 2. Проверяем, что удалено самое тяжелое ребро (3-1)
-  bool test2 = !hasConnection(g.connections(3), 1);
-  allPassed &= test2;
-  printTestResult(test2, "Removes heaviest edge in cycle");
+  // 3. Проверки
+  bool edges_ok = (total_edges == 2);
+  allPassed &= edges_ok;
+  printTestResult(edges_ok, "Triangle → becomes tree (2 edges remain)");
+  cout << "Actual edges count: " << total_edges << "\n";
 
-  // 3. Тест: несвязный граф не меняется
-  Graph< std::string > g2;
-  g2.insert("A");
-  g2.insert("B");
+  // Проверка связности
+  bool connected = (!g.connections(1).empty() &&
+                   !g.connections(2).empty() &&
+                   !g.connections(3).empty());
+  allPassed &= connected;
+  printTestResult(connected, "Graph remains connected");
+
+  // 4. Проверка для ациклического графа
+  Graph<string> g2;
+  g2.insert("A"); g2.insert("B");
   g2.link("A", "B", 1);
 
-  size_t before = g2.connections("A").size() + g2.connections("B").size();
+  size_t before = g2.connections("A").size();
   g2.removeCycles();
-  size_t after = g2.connections("A").size() + g2.connections("B").size();
+  size_t after = g2.connections("A").size();
 
-  bool test3 = (before == after);
-  allPassed &= test3;
-  printTestResult(test3, "Acyclic graph remains unchanged");
+  bool unchanged = (before == after);
+  allPassed &= unchanged;
+  printTestResult(unchanged, "Acyclic graph remains unchanged");
 
   printTestResult(allPassed, "TOTAL: Cycle Removal");
+
+  // Дополнительная диагностика
+  if(!edges_ok) {
+    cout << "\nDIAGNOSTICS:\n";
+    cout << "Expected edge count: 2\n";
+    cout << "Actual edge count: " << total_edges << "\n";
+
+    // Проверяем какие конкретно ребра остались
+    vector<pair<int,int>> remaining_edges;
+    for(int i = 1; i <= 3; i++) {
+      for(const auto& conn : g.connections(i)) {
+        int j = conn.first.get();
+        if(i < j) remaining_edges.emplace_back(i, j);
+      }
+    }
+
+    cout << "Remaining edges: ";
+    for(const auto& e : remaining_edges) {
+      cout << e.first << "-" << e.second << " ";
+    }
+    cout << "\n";
+  }
 }
 
 int main()

@@ -1,5 +1,6 @@
 ﻿#ifndef GRAPH_H
 #define GRAPH_H
+#include <algorithm>
 #include <queue>
 #include <vector>
 #include <memory>
@@ -66,18 +67,17 @@ private:
 
   NodeMap nodes_;
 
+  struct DSU;
+
   using Edge = std::pair< std::size_t, std::pair< Node*, Node* > >;
 
-  struct EdgeComparator
+  struct edgeLess
   {
     bool operator()(const Edge& lhs, const Edge& rhs) const;
   };
 
-  using CntQueue = std::priority_queue< Edge, std::vector< Edge >, EdgeComparator >;
-  using NodePtrSet = std::unordered_set< Node* >;
-
-  void pushConnections(CntQueue& cntQueue, Node* node);
-  void removeSubGraphCycles(Node* node, NodePtrSet& inTree);
+  std::vector< Edge > collectEdges() const;
+  DSU makeUnrelatedDSU() const;
 };
 
 template< class Key, class Hash, class KeyEqual >
@@ -119,6 +119,39 @@ template< class Key, class Hash, class KeyEqual >
 Graph< Key, Hash, KeyEqual >::Graph(size_t capacity)
 {
   nodes_.reserve(capacity);
+}
+
+template< class Key, class Hash, class KeyEqual >
+Graph< Key, Hash, KeyEqual >::Graph(const this_t& rhs)
+{
+  nodes_.reserve(rhs.nodes_.size());
+  for (const auto& rhsNodePair: rhs.nodes_)
+  {
+    nodes_.emplace(rhsNodePair.first, std::make_unique< Node >(rhsNodePair.first));
+  }
+  for (auto& newNodePair: nodes_)
+  {
+    const Key& key = newNodePair.first;
+    Node* node = newNodePair.second.get();
+    for (const auto& rhsCntPair: rhs.nodes_.at(key)->connections_)
+    {
+      const Key& targetKey = rhsCntPair.first.get();
+      const std::size_t weight = rhsCntPair.second.weight_;
+      Node* target = nodes_[targetKey].get();
+      node->connections_.emplace(std::cref(target->data_), Connection{ target, weight });
+    }
+  }
+}
+
+template< class Key, class Hash, class KeyEqual >
+auto Graph< Key, Hash, KeyEqual >::operator=(const this_t& rhs) -> this_t&
+{
+  if (this != &rhs)
+  {
+    Graph temp(rhs);
+    std::swap(nodes_, temp.nodes_);
+  }
+  return *this;
 }
 
 template< class Key, class Hash, class KeyEqual >
@@ -233,40 +266,86 @@ bool Graph< Key, Hash, KeyEqual >::removeLink(const Key& first, const Key& secon
 }
 
 template< class Key, class Hash, class KeyEqual >
-bool Graph< Key, Hash, KeyEqual >::EdgeComparator::operator()(const Edge& lhs, const Edge& rhs) const
+struct Graph< Key, Hash, KeyEqual >::DSU
 {
-  return lhs.first > rhs.first;
+  std::unordered_map< Node*, Node* > parent;
+  std::unordered_map< Node*, std::size_t > rank;
+
+  Node* findRoot(Node* node);
+  void unionSets(Node* first, Node* second);
+};
+
+template< class Key, class Hash, class KeyEqual >
+auto Graph< Key, Hash, KeyEqual >::DSU::findRoot(Node* node) -> Node*
+{
+  if (parent[node] != node)
+  {
+    parent.emplace(node, findRoot(parent[node]));
+  }
+  return parent[node];
 }
 
 template< class Key, class Hash, class KeyEqual >
-void Graph< Key, Hash, KeyEqual >::pushConnections(CntQueue& cntQueue, Node* node)
+void Graph< Key, Hash, KeyEqual >::DSU::unionSets(Node* first, Node* second)
 {
-  for (const auto& pair: node->connections_)
+  first = findRoot(first);
+  second = findRoot(second);
+  if (first == second)
   {
-    cntQueue.emplace(pair.second.weight_, std::make_pair(node, pair.second.target_));
+    return;
+  }
+  if (rank[first] < rank[second])
+  {
+    parent.emplace(first, second);
+  }
+  else if (rank[second] > rank[first])
+  {
+    parent.emplace(second, first);
+  }
+  else
+  {
+    rank[first]++;
   }
 }
 
 template< class Key, class Hash, class KeyEqual >
-void Graph< Key, Hash, KeyEqual >::removeSubGraphCycles(Node* node, NodePtrSet& inTree)
+bool Graph< Key, Hash, KeyEqual >::edgeLess::operator()(const Edge& lhs, const Edge& rhs) const
 {
-  CntQueue cntQueue;
-  inTree.insert(node);
-  pushConnections(cntQueue, node);
-  while (!cntQueue.empty())
+  return lhs.first < rhs.first;
+}
+
+template< class Key, class Hash, class KeyEqual >
+auto Graph< Key, Hash, KeyEqual >::collectEdges() const -> std::vector< Edge >
+{
+  std::vector< Edge > edges;
+  edges.reserve(nodes_.size() * 2);
+  for (const auto& pair: nodes_)
   {
-    auto edge = cntQueue.top();
-    auto from = edge.second.first;
-    auto to = edge.second.second;
-    cntQueue.pop();
-    if (inTree.find(to) != inTree.end())
+    Node* from = pair.second.get();
+    for (const auto& connection: from->connections_)
     {
-      removeLink(from->data_, to->data_);
-      continue;
+      Node* to = connection.second.target_;
+      if (from < to)
+      {
+        edges.emplace_back(connection.second.weight_, std::make_pair(from, to));
+      }
     }
-    inTree.insert(to);
-    pushConnections(cntQueue, to);
   }
+  std::sort(edges.begin(), edges.end(), edgeLess{});
+  return edges;
+}
+
+template< class Key, class Hash, class KeyEqual >
+auto Graph< Key, Hash, KeyEqual >::makeUnrelatedDSU() const -> DSU
+{
+  DSU dsu;
+  for (const auto& pair: nodes_)
+  {
+    Node* node = pair.second.get();
+    dsu.parent.emplace(node, node);
+    dsu.rank.emplace(node, 0);
+  }
+  return dsu;
 }
 
 template< class Key, class Hash, class KeyEqual >
@@ -276,54 +355,27 @@ void Graph< Key, Hash, KeyEqual >::removeCycles()
   {
     return;
   }
-  NodePtrSet inTree;
-  for (const auto& pair: nodes_)
+  auto edges = collectEdges();
+  auto dsu = makeUnrelatedDSU();
+  for (const auto& edge: edges)
   {
-    Node* node = pair.second.get();
-    if (inTree.find(node) == inTree.end())
+    Node* from = edge.second.first;
+    Node* to = edge.second.second;
+    if (dsu.findRoot(from) != dsu.findRoot(to))
     {
-      removeSubGraphCycles(node, inTree);
+      dsu.unionSets(from, to);
+    }
+    else
+    {
+      removeLink(from->data_, to->data_);
     }
   }
 }
 
 template< class Key, class Hash, class KeyEqual >
-std::vector< typename Graph< Key, Hash, KeyEqual >::Way > Graph< Key, Hash, KeyEqual >::ways(std::size_t top) const
+auto Graph< Key, Hash, KeyEqual >::ways(std::size_t top) const -> std::vector< Way >
 {
   std::vector< Way > result;
   return result;
-}
-
-template< class Key, class Hash, class KeyEqual >
-Graph< Key, Hash, KeyEqual >::Graph(const this_t& rhs)
-{
-  nodes_.reserve(rhs.nodes_.size());
-  for (const auto& rhsNodePair: rhs.nodes_)
-  {
-    nodes_.emplace(rhsNodePair.first, std::make_unique< Node >(rhsNodePair.first));
-  }
-  for (auto& newNodePair: nodes_)
-  {
-    const Key& key = newNodePair.first;
-    Node* node = newNodePair.second.get();
-    for (const auto& rhsCntPair: rhs.nodes_.at(key)->connections_)
-    {
-      const Key& targetKey = rhsCntPair.first.get();
-      const std::size_t weight = rhsCntPair.second.weight_;
-      Node* target = nodes_[targetKey].get();
-      node->connections_.emplace(std::cref(target->data_), Connection{ target, weight });
-    }
-  }
-}
-
-template< class Key, class Hash, class KeyEqual >
-auto Graph< Key, Hash, KeyEqual >::operator=(const this_t& rhs) -> this_t&
-{
-  if (this != & rhs)
-  {
-    Graph temp(rhs);
-    std::swap(nodes_, temp.nodes_);
-  }
-  return *this;
 }
 #endif
