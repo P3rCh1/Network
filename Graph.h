@@ -280,7 +280,7 @@ auto Graph< Key, Hash, KeyEqual >::DSU::findRoot(Node* node) -> Node*
 {
   if (parent[node] != node)
   {
-    parent.emplace(node, findRoot(parent[node]));
+    parent[node] = findRoot(parent[node]);
   }
   return parent[node];
 }
@@ -296,15 +296,15 @@ void Graph< Key, Hash, KeyEqual >::DSU::unionSets(Node* first, Node* second)
   }
   if (rank[first] < rank[second])
   {
-    parent.emplace(first, second);
-  }
-  else if (rank[second] > rank[first])
-  {
-    parent.emplace(second, first);
+    parent[first] = second;
   }
   else
   {
-    rank[first]++;
+    parent[second] = first;
+    if (rank[first] == rank[second])
+    {
+      ++rank[first];
+    }
   }
 }
 
