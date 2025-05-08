@@ -1,9 +1,11 @@
 ﻿#ifndef GRAPH_H
 #define GRAPH_H
+#include <queue>
 #include <vector>
 #include <memory>
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 
 template<
   class Key,
@@ -12,9 +14,20 @@ template<
 class Graph
 {
 public:
-  using this_t = Graph< Key, Hash, KeyEqual >;
+  using this_t = Graph;
   using ConstKeyRef = std::reference_wrapper< const Key >;
-  using CntOutVec = std::vector< std::pair< Key, std::size_t > >;
+  using CntOutVec = std::vector< std::pair< ConstKeyRef, std::size_t > >;
+  using Way = std::vector< std::pair< ConstKeyRef, std::size_t > >;
+
+  size_t connectionCount() const
+  {
+    size_t count = 0;
+    for (const auto& pair: nodes_)
+    {
+      count += pair.second->connections_.size();
+    }
+    return count / 2; // Каждое ребро учтено дважды
+  }
 
   explicit Graph(std::size_t capacity = 100);
   ~Graph() noexcept = default;
@@ -22,15 +35,17 @@ public:
   this_t& operator=(this_t&& rhs) noexcept = default;
   Graph(const this_t& rhs);
   this_t& operator=(const this_t& rhs);
+
   void clear() noexcept;
   std::size_t size() const noexcept;
-
   bool insert(const Key& key);
   bool link(const Key& first, const Key& second, std::size_t weight);
   CntOutVec connections(const Key& key) const;
   bool remove(const Key& key);
   bool removeForce(const Key& key);
   bool removeLink(const Key& first, const Key& second);
+  void removeCycles();
+  std::vector< Way > ways(std::size_t top) const;
 
 private:
   struct Connection;
@@ -50,6 +65,19 @@ private:
   using ConnectionMap = std::unordered_map< ConstKeyRef, Connection, RefKeyHash, RefKeyEqual >;
 
   NodeMap nodes_;
+
+  using Edge = std::pair< std::size_t, std::pair< Node*, Node* > >;
+
+  struct EdgeComparator
+  {
+    bool operator()(const Edge& lhs, const Edge& rhs) const;
+  };
+
+  using CntQueue = std::priority_queue< Edge, std::vector< Edge >, EdgeComparator >;
+  using NodePtrSet = std::unordered_set< Node* >;
+
+  void pushConnections(CntQueue& cntQueue, Node* node);
+  void removeSubGraphCycles(Node* node, NodePtrSet& inTree);
 };
 
 template< class Key, class Hash, class KeyEqual >
@@ -154,7 +182,7 @@ auto Graph< Key, Hash, KeyEqual >::connections(const Key& key) const -> CntOutVe
   result.reserve(it->second->connections_.size());
   for (const auto& pair: it->second->connections_)
   {
-    result.emplace_back(pair.first.get(), pair.second.weight_);
+    result.emplace_back(pair.first, pair.second.weight_);
   }
   return result;
 }
@@ -205,6 +233,68 @@ bool Graph< Key, Hash, KeyEqual >::removeLink(const Key& first, const Key& secon
 }
 
 template< class Key, class Hash, class KeyEqual >
+bool Graph< Key, Hash, KeyEqual >::EdgeComparator::operator()(const Edge& lhs, const Edge& rhs) const
+{
+  return lhs.first > rhs.first;
+}
+
+template< class Key, class Hash, class KeyEqual >
+void Graph< Key, Hash, KeyEqual >::pushConnections(CntQueue& cntQueue, Node* node)
+{
+  for (const auto& pair: node->connections_)
+  {
+    cntQueue.emplace(pair.second.weight_, std::make_pair(node, pair.second.target_));
+  }
+}
+
+template< class Key, class Hash, class KeyEqual >
+void Graph< Key, Hash, KeyEqual >::removeSubGraphCycles(Node* node, NodePtrSet& inTree)
+{
+  CntQueue cntQueue;
+  inTree.insert(node);
+  pushConnections(cntQueue, node);
+  while (!cntQueue.empty())
+  {
+    auto edge = cntQueue.top();
+    auto from = edge.second.first;
+    auto to = edge.second.second;
+    cntQueue.pop();
+    if (inTree.find(to) != inTree.end())
+    {
+      removeLink(from->data_, to->data_);
+      continue;
+    }
+    inTree.insert(to);
+    pushConnections(cntQueue, to);
+  }
+}
+
+template< class Key, class Hash, class KeyEqual >
+void Graph< Key, Hash, KeyEqual >::removeCycles()
+{
+  if (nodes_.empty())
+  {
+    return;
+  }
+  NodePtrSet inTree;
+  for (const auto& pair: nodes_)
+  {
+    Node* node = pair.second.get();
+    if (inTree.find(node) == inTree.end())
+    {
+      removeSubGraphCycles(node, inTree);
+    }
+  }
+}
+
+template< class Key, class Hash, class KeyEqual >
+std::vector< typename Graph< Key, Hash, KeyEqual >::Way > Graph< Key, Hash, KeyEqual >::ways(std::size_t top) const
+{
+  std::vector< Way > result;
+  return result;
+}
+
+template< class Key, class Hash, class KeyEqual >
 Graph< Key, Hash, KeyEqual >::Graph(const this_t& rhs)
 {
   nodes_.reserve(rhs.nodes_.size());
@@ -234,6 +324,6 @@ auto Graph< Key, Hash, KeyEqual >::operator=(const this_t& rhs) -> this_t&
     Graph temp(rhs);
     std::swap(nodes_, temp.nodes_);
   }
-  return * this;
+  return *this;
 }
 #endif
