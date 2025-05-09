@@ -183,13 +183,13 @@ bool Graph< Key, Hash, KeyEqual >::link(const Key& first, const Key& second, std
   }
   Node* firstNode = firstIter->second.get();
   Node* secondNode = secondIter->second.get();
-  auto& firstСnts = firstNode->connections_;
+  auto& firstCnts = firstNode->connections_;
   auto& secondCnts = secondNode->connections_;
-  if (firstСnts.find(std::cref(secondIter->first)) != firstСnts.end())
+  if (firstCnts.find(std::cref(secondIter->first)) != firstCnts.end())
   {
     return false;
   }
-  firstСnts.emplace(std::cref(secondIter->first), Connection{ secondNode, weight });
+  firstCnts.emplace(std::cref(secondIter->first), Connection{ secondNode, weight });
   secondCnts.emplace(std::cref(firstIter->first), Connection{ firstNode, weight });
   return true;
 }
