@@ -3,21 +3,19 @@
 #include <string>
 #include "Graph.h"
 
-using namespace std;
-
-void printTestResult(bool condition, const string& testName)
+void printTestResult(bool condition, const std::string& testName)
 {
-  cout << "[" << (condition? "PASS": "FAIL") << "] " << testName << endl;
+  std::cout << "[" << (condition? "PASS": "FAIL") << "] " << testName << std::endl;
 }
 
-void printSectionHeader(const string& sectionName)
+void printSectionHeader(const std::string& sectionName)
 {
-  cout << "\n=== " << sectionName << " ===" << endl;
+  std::cout << "\n=== " << sectionName << " ===" << std::endl;
 }
 
 void testNodeInsertion()
 {
-  printSectionHeader("Node Insertion Tests");
+  printSectionHeader("Node Insertion");
   Graph< int > g;
   bool allPassed = true;
 
@@ -30,137 +28,82 @@ void testNodeInsertion()
   allPassed &= (g.size() == 1);
   printTestResult(g.size() == 1, "Correct size after insertion");
 
-  printTestResult(allPassed, "TOTAL: Node Insertion");
+  printTestResult(allPassed, "TOTAL");
 }
 
 void testLinkOperations()
 {
-  printSectionHeader("Link Operations Tests");
-  Graph< string > g;
+  printSectionHeader("Link Operations");
+  Graph< std::string > g;
   g.insert("A");
   g.insert("B");
   g.insert("C");
   bool allPassed = true;
 
-  bool linkCreated = g.link("A", "B", 5);
-  allPassed &= linkCreated;
-  printTestResult(linkCreated, "Create valid link");
+  allPassed &= g.link("A", "B", 5);
+  printTestResult(allPassed, "Create valid link");
 
   allPassed &= !g.link("A", "D", 3);
-  printTestResult(!g.link("A", "D", 3), "Reject link to non-existent node");
+  printTestResult(!g.link("A", "D", 3), "Reject invalid link");
 
   allPassed &= !g.link("A", "A", 0);
-  printTestResult(!g.link("A", "A", 0), "Reject self-linking");
+  printTestResult(!g.link("A", "A", 0), "Reject self-link");
 
-  bool symmetric = (g.connections("B").size() == 1 &&
-                    g.connections("B")[0].first.get() == "A");
+  bool symmetric = !g.connections("B").empty() &&
+                   g.connections("B")[0].first.get() == "A";
   allPassed &= symmetric;
   printTestResult(symmetric, "Links are symmetric");
 
   allPassed &= !g.link("A", "B", 2);
   printTestResult(!g.link("A", "B", 2), "Reject duplicate link");
 
-  printTestResult(allPassed, "TOTAL: Link Operations");
-}
-
-bool hasConnection(const std::vector< std::pair< std::reference_wrapper< const int >, size_t > >& connections,
-                   int target)
-{
-  for (const auto& conn: connections)
-  {
-    if (conn.first.get() == target) return true;
-  }
-  return false;
+  printTestResult(allPassed, "TOTAL");
 }
 
 void testCycleRemoval()
 {
-  printSectionHeader("Cycle Removal Tests");
-  Graph<int> g;
+  printSectionHeader("Cycle Removal");
+  Graph< int > g;
   bool allPassed = true;
 
-  // 1. Создаем треугольник
-  g.insert(1); g.insert(2); g.insert(3);
+  g.insert(1);
+  g.insert(2);
+  g.insert(3);
   g.link(1, 2, 1);
   g.link(2, 3, 2);
   g.link(3, 1, 3);
 
-  // Вывод начального состояния
-  cout << "\nInitial graph state:\n";
-  for(int i = 1; i <= 3; i++) {
-    cout << "Node " << i << " connected to: ";
-    for(const auto& conn : g.connections(i)) {
-      cout << conn.first.get() << " (w:" << conn.second << ") ";
-    }
-    cout << "\n";
-  }
-
-  // 2. Удаляем циклы
   g.removeCycles();
 
-  // Вывод конечного состояния
-  cout << "\nGraph after removeCycles():\n";
-  int total_edges = 0;
-  for(int i = 1; i <= 3; i++) {
-    auto conns = g.connections(i);
-    total_edges += conns.size();
-    cout << "Node " << i << " connected to: ";
-    for(const auto& conn : conns) {
-      cout << conn.first.get() << " ";
-    }
-    cout << "\n";
+  size_t edgeCount = 0;
+  for (const auto& node: g.nodes())
+  {
+    edgeCount += g.connections(node).size();
   }
-  total_edges /= 2; // Учитываем двунаправленность
+  edgeCount /= 2;
 
-  // 3. Проверки
-  bool edges_ok = (total_edges == 2);
-  allPassed &= edges_ok;
-  printTestResult(edges_ok, "Triangle → becomes tree (2 edges remain)");
-  cout << "Actual edges count: " << total_edges << "\n";
+  allPassed &= (edgeCount == 2);
+  printTestResult(edgeCount == 2, "Removes one edge from triangle");
 
-  // Проверка связности
-  bool connected = (!g.connections(1).empty() &&
+  bool connected = !g.connections(1).empty() &&
                    !g.connections(2).empty() &&
-                   !g.connections(3).empty());
+                   !g.connections(3).empty();
   allPassed &= connected;
-  printTestResult(connected, "Graph remains connected");
+  printTestResult(connected, "Graph stays connected");
 
-  // 4. Проверка для ациклического графа
-  Graph<string> g2;
-  g2.insert("A"); g2.insert("B");
+  Graph< std::string > g2;
+  g2.insert("A");
+  g2.insert("B");
   g2.link("A", "B", 1);
 
   size_t before = g2.connections("A").size();
   g2.removeCycles();
   size_t after = g2.connections("A").size();
 
-  bool unchanged = (before == after);
-  allPassed &= unchanged;
-  printTestResult(unchanged, "Acyclic graph remains unchanged");
+  allPassed &= (before == after);
+  printTestResult(before == after, "Acyclic graph unchanged");
 
-  printTestResult(allPassed, "TOTAL: Cycle Removal");
-
-  // Дополнительная диагностика
-  if(!edges_ok) {
-    cout << "\nDIAGNOSTICS:\n";
-    cout << "Expected edge count: 2\n";
-    cout << "Actual edge count: " << total_edges << "\n";
-
-    // Проверяем какие конкретно ребра остались
-    vector<pair<int,int>> remaining_edges;
-    for(int i = 1; i <= 3; i++) {
-      for(const auto& conn : g.connections(i)) {
-        int j = conn.first.get();
-        if(i < j) remaining_edges.emplace_back(i, j);
-      }
-    }
-
-    cout << "Remaining edges: ";
-    for(const auto& e : remaining_edges) {
-      cout << e.first << "-" << e.second << " ";
-    }
-    cout << "\n";
-  }
+  printTestResult(allPassed, "TOTAL");
 }
 
 int main()

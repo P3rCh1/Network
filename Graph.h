@@ -1,15 +1,14 @@
 ﻿#ifndef GRAPH_H
 #define GRAPH_H
-#include <algorithm>
 #include <queue>
 #include <vector>
 #include <memory>
+#include <algorithm>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
 
-template<
-  class Key,
+template< class Key,
   class Hash = std::hash< Key >,
   class KeyEqual = std::equal_to< Key > >
 class Graph
@@ -17,18 +16,9 @@ class Graph
 public:
   using this_t = Graph;
   using ConstKeyRef = std::reference_wrapper< const Key >;
-  using CntOutVec = std::vector< std::pair< ConstKeyRef, std::size_t > >;
+  using NodesOutVec = std::vector< ConstKeyRef >;
+  using CntsOutVec = std::vector< std::pair< ConstKeyRef, std::size_t > >;
   using Way = std::vector< std::pair< ConstKeyRef, std::size_t > >;
-
-  size_t connectionCount() const
-  {
-    size_t count = 0;
-    for (const auto& pair: nodes_)
-    {
-      count += pair.second->connections_.size();
-    }
-    return count / 2; // Каждое ребро учтено дважды
-  }
 
   explicit Graph(std::size_t capacity = 100);
   ~Graph() noexcept = default;
@@ -41,7 +31,8 @@ public:
   std::size_t size() const noexcept;
   bool insert(const Key& key);
   bool link(const Key& first, const Key& second, std::size_t weight);
-  CntOutVec connections(const Key& key) const;
+  NodesOutVec nodes() const;
+  CntsOutVec connections(const Key& key) const;
   bool remove(const Key& key);
   bool removeForce(const Key& key);
   bool removeLink(const Key& first, const Key& second);
@@ -204,14 +195,26 @@ bool Graph< Key, Hash, KeyEqual >::link(const Key& first, const Key& second, std
 }
 
 template< class Key, class Hash, class KeyEqual >
-auto Graph< Key, Hash, KeyEqual >::connections(const Key& key) const -> CntOutVec
+auto Graph< Key, Hash, KeyEqual >::nodes() const -> NodesOutVec
+{
+  NodesOutVec result;
+  result.reserve(nodes_.size());
+  for (const auto& pair: nodes_)
+  {
+    result.emplace_back(pair.first);
+  }
+  return result;
+}
+
+template< class Key, class Hash, class KeyEqual >
+auto Graph< Key, Hash, KeyEqual >::connections(const Key& key) const -> CntsOutVec
 {
   auto it = nodes_.find(key);
   if (it == nodes_.end())
   {
     throw std::invalid_argument("Node not found");
   }
-  CntOutVec result;
+  CntsOutVec result;
   result.reserve(it->second->connections_.size());
   for (const auto& pair: it->second->connections_)
   {
