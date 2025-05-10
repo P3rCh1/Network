@@ -377,8 +377,8 @@ namespace ohantsev
   template< class Key, class Hash, class KeyEqual >
   auto Graph< Key, Hash, KeyEqual >::ways(std::size_t top) const -> std::vector< Way >
   {
-    std::vector< Way > result;
-    return result;
+    (void)top;
+    return {};
   }
 }
 #endif

@@ -15,6 +15,46 @@ void printSectionHeader(const std::string& sectionName)
   std::cout << "\n=== " << sectionName << " ===" << std::endl;
 }
 
+void testSimpleNodeAndLinkRemoval()
+{
+  printSectionHeader("Simple Node and Link Removal");
+  Graph<std::string> g;
+  bool allPassed = true;
+
+  // Вставляем узлы
+  g.insert("A");
+  g.insert("B");
+  g.insert("C");
+  g.link("A", "B", 1);
+  g.link("B", "C", 2);
+
+  // Удаляем связь между A и B
+  allPassed &= g.removeLink("A", "B");
+  printTestResult(g.removeLink("A", "B"), "Remove link A-B");
+
+  // Проверяем, что связь удалена
+  allPassed &= g.connections("A").empty();
+  printTestResult(g.connections("A").empty(), "A no longer connects to B");
+
+  allPassed &= !g.connections("B").empty(); // B still connects to C
+  printTestResult(!g.connections("B").empty(), "B still connects to C");
+
+  // Удаляем узел
+  allPassed &= g.remove("C");
+  printTestResult(g.remove("C"), "Remove node C");
+
+  // Проверяем, что узел C удален
+  allPassed &= g.connections("B").size() == 0;
+  printTestResult(g.connections("B").size() == 0, "B no longer connects to C after removal");
+
+  // Проверяем размер графа
+  allPassed &= (g.size() == 2);
+  printTestResult(g.size() == 2, "Graph size correct after removal");
+
+  printTestResult(allPassed, "TOTAL");
+}
+
+
 void testNodeInsertion()
 {
   printSectionHeader("Node Insertion");
@@ -258,8 +298,10 @@ void testAdvancedMethods()
     printTestResult(allPassed, "TOTAL");
 }
 
+
 int main()
 {
+  testSimpleNodeAndLinkRemoval();
     testNodeInsertion();
     testLinkOperations();
     testCycleRemoval();

@@ -45,6 +45,8 @@ namespace ohantsev
     template< class K, class V >
     std::pair< iterator, bool > emplace(K&& key, V&& value);
     bool erase(const Key& key);
+    bool erase(const iterator& iter);
+    bool erase(const const_iterator& iter);
     void clear() noexcept;
     const mapped_type& operator[](const Key& key) const;
     const mapped_type& at(const Key& key) const;
@@ -190,7 +192,7 @@ namespace ohantsev
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
-  bool HashMap<Key, Value, Hash, KeyEqual>::empty() const noexcept
+  bool HashMap< Key, Value, Hash, KeyEqual >::empty() const noexcept
   {
     return size_ == 0;
   }
@@ -250,7 +252,7 @@ namespace ohantsev
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
-  void HashMap<Key, Value, Hash, KeyEqual>::resize(size_type newSize_)
+  void HashMap< Key, Value, Hash, KeyEqual >::resize(size_type newSize_)
   {
     this_t tmp(newSize_);
     for (auto& pair: *this)
@@ -292,8 +294,7 @@ namespace ohantsev
     if (this != &rhs)
     {
       auto tmp(rhs);
-      removeContainer();
-      swap(rhs);
+      swap(tmp);
     }
     return *this;
   }
@@ -345,7 +346,7 @@ namespace ohantsev
   auto HashMap< Key, Value, Hash, KeyEqual >::
   emplace(K&& key, V&& value) -> std::pair< iterator, bool >
   {
-    return insert(value_type(std::forward<K>(key), std::forward<V>(value)));
+    return insert(value_type(std::forward< K >(key), std::forward< V >(value)));
   }
 
 
@@ -372,19 +373,30 @@ namespace ohantsev
       --size_;
       return true;
     }
-    while (cur)
+    while (cur && cur->next_)
     {
-      node_t* next = map_[bucket].get();
-      if (KeyEqual{}(next->data_.first, key))
+      if (KeyEqual{}(cur->next_->data_.first, key))
       {
-        cur->next_ = std::move(next->next_);
+        cur->next_ = std::move(cur->next_->next_);
         --size_;
         return true;
       }
+      cur = cur->next_.get();
     }
     return false;
   }
 
+  template< class Key, class Value, class Hash, class KeyEqual >
+  bool HashMap< Key, Value, Hash, KeyEqual >::erase(const iterator& iter)
+  {
+    return erase(iter->first);
+  }
+
+  template< class Key, class Value, class Hash, class KeyEqual >
+  bool HashMap< Key, Value, Hash, KeyEqual >::erase(const const_iterator& iter)
+  {
+    return erase(iter->first);
+  }
 
   template< class Key, class Value, class Hash, class KeyEqual >
   auto HashMap< Key, Value, Hash, KeyEqual >::cbegin() const noexcept -> const_iterator
@@ -439,19 +451,25 @@ namespace ohantsev
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
-auto HashMap<Key, Value, Hash, KeyEqual>::operator[](const Key& key) -> mapped_type&
-{
-  return emplace(key, mapped_type{}).first->second;
-}
-
-  template< class Key, class Value, class Hash, class KeyEqual >
-  auto HashMap<Key, Value, Hash, KeyEqual>::operator[](const Key& key) const -> const mapped_type&
+  auto HashMap< Key, Value, Hash, KeyEqual >::operator[](const Key& key) -> mapped_type&
   {
-    return find(key)->second;
+    return emplace(key, mapped_type{}).first->second;
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
-  auto HashMap<Key, Value, Hash, KeyEqual>::at(const Key& key) -> mapped_type&
+  auto HashMap< Key, Value, Hash, KeyEqual >::operator[](const Key& key) const -> const mapped_type&
+  {
+    auto iter = find(key);
+    if (iter == end())
+    {
+      static mapped_type defaultVal{};
+      return defaultVal;
+    }
+    return iter->second;
+  }
+
+  template< class Key, class Value, class Hash, class KeyEqual >
+  auto HashMap< Key, Value, Hash, KeyEqual >::at(const Key& key) -> mapped_type&
   {
     auto iter = find(key);
     if (iter != end())
@@ -462,7 +480,7 @@ auto HashMap<Key, Value, Hash, KeyEqual>::operator[](const Key& key) -> mapped_t
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
-  auto HashMap<Key, Value, Hash, KeyEqual>::at(const Key& key) const -> const mapped_type&
+  auto HashMap< Key, Value, Hash, KeyEqual >::at(const Key& key) const -> const mapped_type&
   {
     auto iter = find(key);
     if (iter != end())
