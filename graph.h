@@ -17,7 +17,7 @@ namespace ohantsev
     using this_t = Graph;
     using ConstKeyRef = std::reference_wrapper< const Key >;
     using NodesOutVec = std::vector< ConstKeyRef >;
-    using CntsOutVec = std::vector< std::pair< ConstKeyRef, std::size_t > >;
+    using Connections = std::vector< std::pair< ConstKeyRef, std::size_t > >;
     using Way = std::vector< std::pair< ConstKeyRef, std::size_t > >;
 
     explicit Graph(std::size_t capacity = 20);
@@ -32,12 +32,13 @@ namespace ohantsev
     bool insert(const Key& key);
     bool link(const Key& first, const Key& second, std::size_t weight);
     NodesOutVec nodes() const;
-    CntsOutVec connections(const Key& key) const;
+    Connections connections(const Key& key) const;
     bool remove(const Key& key);
     bool removeForce(const Key& key);
     bool removeLink(const Key& first, const Key& second);
     void removeCycles();
-    std::vector< Way > ways(std::size_t top) const;
+    Way path() const;
+    std::vector< Way > path(std::size_t top) const;
 
   private:
     struct Connection;
@@ -207,14 +208,14 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::connections(const Key& key) const -> CntsOutVec
+  auto Graph< Key, Hash, KeyEqual >::connections(const Key& key) const -> Connections
   {
     auto iter = nodes_.find(key);
     if (iter == nodes_.end())
     {
       throw std::invalid_argument("Node not found");
     }
-    CntsOutVec result;
+    Connections result;
     result.reserve(iter->second->connections_.size());
     for (const auto& pair: iter->second->connections_)
     {
@@ -376,7 +377,7 @@ bool Graph< Key, Hash, KeyEqual >::remove(const Key& key)
   }
 
   template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::ways(std::size_t top) const -> std::vector< Way >
+  auto Graph< Key, Hash, KeyEqual >::path(std::size_t top) const -> std::vector< Way >
   {
     std::vector< Way > result;
     return result;
