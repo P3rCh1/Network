@@ -20,7 +20,8 @@ namespace ohantsev
     using ConstKeyRef = std::reference_wrapper< const Key >;
     using NodesOutVec = std::vector< ConstKeyRef >;
     using Connections = std::vector< std::pair< ConstKeyRef, std::size_t > >;
-    using Way = std::vector< std::pair< ConstKeyRef, std::size_t > >;
+    struct Connection;
+    struct Way;
 
     explicit Graph(std::size_t capacity = 20);
     ~Graph() noexcept = default;
@@ -45,7 +46,7 @@ namespace ohantsev
     std::vector< Way > path(const Key& start, const Key& end, std::size_t top) const;
 
   private:
-    struct Connection;
+    struct ConnectionPrivate;
     struct Node;
     struct RefKeyHash;
     struct RefKeyEqual;
@@ -53,33 +54,40 @@ namespace ohantsev
     struct edgeLess;
     struct stepGreater;
     struct DijkstraContainers;
+    struct WayGreater;
 
     using Edge = std::pair< std::size_t, std::pair< Node*, Node* > >;
     using NodeMap = HashMap< Key, UniquePtr< Node >, Hash, KeyEqual >;
-    using ConnectionMap = HashMap< ConstKeyRef, Connection, RefKeyHash, RefKeyEqual >;
+    using ConnectionMap = HashMap< ConstKeyRef, ConnectionPrivate, RefKeyHash, RefKeyEqual >;
     using Step = std::pair< std::size_t, Node* >;
 
     NodeMap nodes_;
 
     std::vector< Edge > collectEdges() const;
     DSU makeUnrelatedDSU() const;
-    std::size_t length(const Way& way) const;
-    bool isSubPath(const Way& sub, const Way& full) const;
+    static bool isSubPath(const Way& sub, const Way& full);
     Way constructPath(const Key& start, const Key& end) const;
     void pushNeighbors(DijkstraContainers& cont, Node* node) const;
     Way releasePath(const DijkstraContainers& cont, Node* start, Node* end) const;
   };
 
   template< class Key, class Hash, class KeyEqual >
-  struct Graph< Key, Hash, KeyEqual >::Connection
+  struct Graph< Key, Hash, KeyEqual >::ConnectionPrivate
   {
     Node* target_;
     std::size_t weight_;
 
-    Connection(Node* target, size_t weight) :
+    ConnectionPrivate(Node* target, size_t weight) :
       target_(target),
       weight_(weight)
     {}
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::Connection
+  {
+    const Key& target;
+    std::size_t weight;
   };
 
   template< class Key, class Hash, class KeyEqual >
@@ -130,6 +138,15 @@ namespace ohantsev
   };
 
   template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::WayGreater
+  {
+    bool operator()(const Way& lhs, const Way& rhs) const
+    {
+      return lhs.length > rhs.length;
+    }
+  };
+
+  template< class Key, class Hash, class KeyEqual >
   Graph< Key, Hash, KeyEqual >::Graph(size_t capacity)
   {
     nodes_.reserve(capacity);
@@ -152,7 +169,7 @@ namespace ohantsev
         const Key& targetKey = rhsCntPair.first.get();
         const std::size_t weight = rhsCntPair.second.weight_;
         Node* target = nodes_[targetKey].get();
-        node->connections_.emplace(std::cref(target->data_), Connection{ target, weight });
+        node->connections_.emplace(std::cref(target->data_), ConnectionPrivate{ target, weight });
       }
     }
   }
@@ -212,8 +229,8 @@ namespace ohantsev
     {
       return false;
     }
-    firstCnts.emplace(std::cref(secondIter->first), Connection{ secondNode, weight });
-    secondCnts.emplace(std::cref(firstIter->first), Connection{ firstNode, weight });
+    firstCnts.emplace(std::cref(secondIter->first), ConnectionPrivate{ secondNode, weight });
+    secondCnts.emplace(std::cref(firstIter->first), ConnectionPrivate{ firstNode, weight });
     return true;
   }
 
@@ -406,32 +423,28 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
-  std::size_t Graph< Key, Hash, KeyEqual >::length(const Way& way) const
+  struct Graph< Key, Hash, KeyEqual >::Way
   {
-    std::size_t result = 0;
-    for (auto step: way)
-    {
-      result += step.second;
-    }
-    return result;
-  }
+    std::vector< ConstKeyRef > steps;
+    std::size_t length{ 0 };
+  };
 
-  template< class Key, class Hash, class KeyEqual >
-  bool Graph< Key, Hash, KeyEqual >::isSubPath(const Way& sub, const Way& full) const
-  {
-    if (sub.size() > full.size())
-    {
-      return false;
-    }
-    for (std::size_t i = 0; i < sub.size(); ++i)
-    {
-      if (!KeyEqual{}(sub[i].first.get(), full[i].first.get()))
-      {
-        return false;
-      }
-    }
-    return true;
-  }
+  // template< class Key, class Hash, class KeyEqual >
+  // bool Graph< Key, Hash, KeyEqual >::isSubPath(const Way& sub, const Way& full)
+  // {
+  //   if (sub.size() > full.size())
+  //   {
+  //     return false;
+  //   }
+  //   for (std::size_t i = 0; i < sub.size(); ++i)
+  //   {
+  //     if (!KeyEqual{}(sub[i].first.get(), full[i].first.get()))
+  //     {
+  //       return false;
+  //     }
+  //   }
+  //   return true;
+  // }
 
   template< class Key, class Hash, class KeyEqual >
   struct Graph< Key, Hash, KeyEqual >::DijkstraContainers
@@ -496,10 +509,10 @@ namespace ohantsev
     return releasePath(cont, startNode, endNode);
   }
 
-  template <class Key, class Hash, class KeyEqual>
-  auto Graph<Key, Hash, KeyEqual>::releasePath(const DijkstraContainers& cont, Node* start, Node* end) const -> Way
+  template< class Key, class Hash, class KeyEqual >
+  auto Graph< Key, Hash, KeyEqual >::releasePath(const DijkstraContainers& cont, Node* start, Node* end) const -> Way
   {
-    if (cont.distances[end] == std::numeric_limits<std::size_t>::max())
+    if (cont.distances[end] == std::numeric_limits< std::size_t >::max())
     {
       throw std::runtime_error("Nodes don't connected");
     }
@@ -510,10 +523,12 @@ namespace ohantsev
       auto prevStep = cont.previous[current];
       auto prev = prevStep.first;
       auto weight = prevStep.second;
-      path.emplace_back(std::cref(current->data_), weight);
+      path.steps.emplace_back(std::cref(current->data_));
+      path.length += weight;
       current = prev;
     }
-    std::reverse(path.begin(), path.end());
+    path.steps.emplace_back(std::cref(current->data_));
+    std::reverse(path.steps.begin(), path.steps.end());
     return path;
   }
 
