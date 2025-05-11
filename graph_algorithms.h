@@ -501,7 +501,7 @@ namespace ohantsev
   {
     if (cont.distances[end] == std::numeric_limits<std::size_t>::max())
     {
-      return {};
+      throw std::runtime_error("Nodes don't connected");
     }
     Way path;
     Node* current = end;

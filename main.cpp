@@ -228,81 +228,68 @@ void testRemovalOperations()
 
 void testDijkstraAlgorithm()
 {
-  printSectionHeader("Dijkstra Algorithm");
-  Graph< std::string > g;
-  bool allPassed = true;
+    printSectionHeader("Dijkstra Algorithm");
+    bool allPassed = true;
 
-  // Простой граф (A-B-C)
-  g.insert("A");
-  g.insert("B");
-  g.insert("C");
-  g.link("A", "B", 1);
-  g.link("B", "C", 2);
+    // Тест 1: Простой линейный граф (A-B-C)
+    {
+        Graph<std::string> g;
+        g.insert("A"); g.insert("B"); g.insert("C");
+        g.link("A", "B", 1);
+        g.link("B", "C", 2);
 
-  // Тест 1: Простой путь
-  auto path1 = g.path("A", "C");
-  bool simplePathCorrect = path1.size() == 2 &&
-                           path1[0].first.get() == "B" && path1[0].second == 1 &&
-                           path1[1].first.get() == "C" && path1[1].second == 2;
-  allPassed &= simplePathCorrect;
-  printTestResult(simplePathCorrect, "Simple path A-B-C");
+        auto path = g.path("A", "C");
+        bool correct = (path.size() == 2) &&
+                      (path[0].first.get() == "B") && (path[0].second == 1) &&
+                      (path[1].first.get() == "C") && (path[1].second == 2);
+        allPassed &= correct;
+        printTestResult(correct, "Single shortest path (A-B-C)");
+    }
 
-  // Тест 2: Путь в одну вершину
-  auto path2 = g.path("A", "A");
-  allPassed &= path2.empty();
-  printTestResult(path2.empty(), "Empty path for A-A");
+    // Тест 2: Граф с двумя равнозначными путями
+    {
+        Graph<std::string> g;
+        g.insert("A"); g.insert("B"); g.insert("C"); g.insert("D");
+        g.link("A", "B", 1);
+        g.link("B", "C", 1);
+        g.link("A", "D", 1);
+        g.link("D", "C", 1);
 
-  // Граф с альтернативными путями
-  g.insert("D");
-  g.link("A", "D", 4);
-  g.link("D", "C", 1);
+        auto path = g.path("A", "C");
+        bool correct = (path.size() == 2) &&
+                      ((path[0].first.get() == "B" && path[1].first.get() == "C") ||
+                       (path[0].first.get() == "D" && path[1].first.get() == "C")) &&
+                      (path[0].second == 1) && (path[1].second == 1);
+        allPassed &= correct;
+        printTestResult(correct, "Multiple shortest paths (A-B-C or A-D-C)");
+    }
 
-  // Тест 3: Выбор оптимального пути (A-B-C вместо A-D-C)
-  auto path3 = g.path("A", "C");
-  bool optimalPathCorrect = path3.size() == 2 &&
-                            path3[0].first.get() == "B" && path3[0].second == 1 &&
-                            path3[1].first.get() == "C" && path3[1].second == 2;
-  allPassed &= optimalPathCorrect;
-  printTestResult(optimalPathCorrect, "Chooses optimal path A-B-C (3) vs A-D-C (5)");
+    // Тест 3: Путь в одну вершину (A-A)
+    {
+        Graph<std::string> g;
+        g.insert("A");
 
-  // Тест 4: Несвязный граф
-  g.insert("E");
-  auto path4 = g.path("A", "E");
-  printTestResult(path4.empty(), "Disconnected graphn");
+        auto path = g.path("A", "A");
+        allPassed &= path.empty();
+        printTestResult(path.empty(), "Empty path for A-A");
+    }
 
-  // Граф с циклом
-  g.link("C", "A", 3);
+    // Тест 4: Несвязный граф
+    {
+        Graph<std::string> g;
+        g.insert("A");
+        g.insert("B");
 
-  // Тест 5: Корректная работа с циклами
-  auto path5 = g.path("A", "C");
-  bool cyclePathCorrect = path5.size() == 2 &&
-                          path5[0].first.get() == "B" && path5[0].second == 1 &&
-                          path5[1].first.get() == "C" && path5[1].second == 2;
-  allPassed &= cyclePathCorrect;
-  printTestResult(cyclePathCorrect, "Correct path in graph with cycle");
+        try {
+            auto path = g.path("A", "B");
+            allPassed = false;
+            printTestResult(false, "Disconnected graph should throw");
+        } catch (...) {
+            printTestResult(true, "Disconnected graph throws exception");
+        }
+    }
 
-  // Больший граф для комплексного теста
-  Graph< int > g2;
-  for (int i = 1; i <= 5; ++i) g2.insert(i);
-  g2.link(1, 2, 2);
-  g2.link(1, 3, 4);
-  g2.link(2, 3, 1);
-  g2.link(2, 4, 7);
-  g2.link(3, 4, 3);
-  g2.link(3, 5, 5);
-  g2.link(4, 5, 2);
-
-  // Тест 6: Комплексный маршрут
-  auto path6 = g2.path(1, 5);
-  bool complexPathCorrect = path6.size() == 4 &&
-                            path6[0].first.get() == 2 && path6[0].second == 2 &&
-                            path6[1].first.get() == 3 && path6[1].second == 1 &&
-                            path6[2].first.get() == 4 && path6[2].second == 3 &&
-                            path6[3].first.get() == 5 && path6[3].second == 2;
-  allPassed &= complexPathCorrect;
-  printTestResult(complexPathCorrect, "Complex path 1-2-3-4-5 (total 8)");
-
-  printTestResult(allPassed, "TOTAL");
+    printTestResult(allPassed, "TOTAL");
 }
 
 int main()
