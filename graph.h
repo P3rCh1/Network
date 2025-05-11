@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
+#include <stdexcept>
 #include <unordered_map>
 
 namespace ohantsev
@@ -19,7 +20,7 @@ namespace ohantsev
     using CntsOutVec = std::vector< std::pair< ConstKeyRef, std::size_t > >;
     using Way = std::vector< std::pair< ConstKeyRef, std::size_t > >;
 
-    explicit Graph(std::size_t capacity = 100);
+    explicit Graph(std::size_t capacity = 20);
     ~Graph() noexcept = default;
     Graph(this_t&& rhs) noexcept = default;
     this_t& operator=(this_t&& rhs) noexcept = default;

@@ -52,9 +52,7 @@ namespace ohantsev
   {
     if (this != &rhs)
     {
-      delete pointer_;
-      pointer_ = rhs.pointer_;
-      rhs.pointer_ = nullptr;
+      reset(rhs.release());
     }
     return *this;
   }
@@ -102,7 +100,7 @@ namespace ohantsev
   template< class T >
   void UniquePtr<T>::reset(T* pointer) noexcept
   {
-    if (pointer != pointer_)
+    if (pointer_ != pointer)
     {
       delete pointer_;
       pointer_ = pointer;

@@ -2,8 +2,9 @@
 #define GRAPH_H
 #include <vector>
 #include <algorithm>
-#include "unique_ptr.h"
+#include <stdexcept>
 #include "hash_map.h"
+#include "unique_ptr.h"
 
 namespace ohantsev
 {
@@ -19,7 +20,7 @@ namespace ohantsev
     using CntsOutVec = std::vector< std::pair< ConstKeyRef, std::size_t > >;
     using Way = std::vector< std::pair< ConstKeyRef, std::size_t > >;
 
-    explicit Graph(std::size_t capacity = 100);
+    explicit Graph(std::size_t capacity = 20);
     ~Graph() noexcept = default;
     Graph(this_t&& rhs) noexcept = default;
     this_t& operator=(this_t&& rhs) noexcept = default;
@@ -208,14 +209,14 @@ namespace ohantsev
   template< class Key, class Hash, class KeyEqual >
   auto Graph< Key, Hash, KeyEqual >::connections(const Key& key) const -> CntsOutVec
   {
-    auto it = nodes_.find(key);
-    if (it == nodes_.end())
+    auto iter = nodes_.find(key);
+    if (iter == nodes_.end())
     {
       throw std::invalid_argument("Node not found");
     }
     CntsOutVec result;
-    result.reserve(it->second->connections_.size());
-    for (const auto& pair: it->second->connections_)
+    result.reserve(iter->second->connections_.size());
+    for (const auto& pair: iter->second->connections_)
     {
       result.emplace_back(pair.first, pair.second.weight_);
     }
@@ -249,6 +250,7 @@ namespace ohantsev
     nodes_.erase(iter);
     return true;
   }
+
 
   template< class Key, class Hash, class KeyEqual >
   bool Graph< Key, Hash, KeyEqual >::removeLink(const Key& first, const Key& second)
@@ -377,8 +379,8 @@ namespace ohantsev
   template< class Key, class Hash, class KeyEqual >
   auto Graph< Key, Hash, KeyEqual >::ways(std::size_t top) const -> std::vector< Way >
   {
-    (void)top;
-    return {};
+    std::vector< Way > result;
+    return result;
   }
 }
 #endif

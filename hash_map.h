@@ -52,11 +52,14 @@ namespace ohantsev
     const mapped_type& at(const Key& key) const;
     mapped_type& operator[](const Key& key);
     mapped_type& at(const Key& key);
-    iterator find(const Key& key) const;
+    iterator find(const Key& key);
+    const_iterator find(const Key& key) const;
     const_iterator cbegin() const noexcept;
     const_iterator cend() const noexcept;
-    iterator begin() const noexcept;
-    iterator end() const noexcept;
+    iterator begin() noexcept;
+    iterator end() noexcept;
+    const_iterator begin() const noexcept;
+    const_iterator end() const noexcept;
 
   private:
     using node_t = FwdListNode< value_type >;
@@ -113,7 +116,7 @@ namespace ohantsev
   auto HashMap< Key, Value, Hash, KeyEqual >::HashMapIterator< IsConst >::operator*() const -> reference
   {
     assert(current_ != nullptr);
-    return current_->data_;
+    return reinterpret_cast< reference >(current_->data_);
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
@@ -121,7 +124,7 @@ namespace ohantsev
   auto HashMap< Key, Value, Hash, KeyEqual >::HashMapIterator< IsConst >::operator->() const -> pointer
   {
     assert(current_ != nullptr);
-    return &current_->data_;
+    return reinterpret_cast< pointer >(&current_->data_);
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
@@ -137,17 +140,17 @@ namespace ohantsev
       current_ = current_->next_.get();
       return *this;
     }
+    current_ = nullptr;
     ++bucket_;
     while (bucket_ < owner_->bucketCount_)
     {
       if (owner_->map_[bucket_])
       {
         current_ = owner_->map_[bucket_].get();
-        return *this;
+        break;
       }
       ++bucket_;
     }
-    current_ = nullptr;
     return *this;
   }
 
@@ -165,6 +168,8 @@ namespace ohantsev
   bool HashMap< Key, Value, Hash, KeyEqual >::HashMapIterator< IsConst >::
   operator==(const HashMapIterator& rhs) const noexcept
   {
+    assert(owner_ != nullptr);
+    assert(rhs.owner_ != nullptr);
     return current_ == rhs.current_;
   }
 
@@ -353,6 +358,7 @@ namespace ohantsev
   template< class Key, class Value, class Hash, class KeyEqual >
   auto HashMap< Key, Value, Hash, KeyEqual >::hash(const Key& key) const -> size_type
   {
+    assert(bucketCount_ != 0);
     return Hash{}(key) % bucketCount_;
   }
 
@@ -365,36 +371,50 @@ namespace ohantsev
   template< class Key, class Value, class Hash, class KeyEqual >
   bool HashMap< Key, Value, Hash, KeyEqual >::erase(const Key& key)
   {
-    size_type bucket = hash(key);
-    node_t* cur = map_[bucket].get();
-    if (cur && KeyEqual{}(cur->data_.first, key))
     {
-      map_[bucket] = std::move(cur->next_);
-      --size_;
-      return true;
-    }
-    while (cur && cur->next_)
-    {
-      if (KeyEqual{}(cur->next_->data_.first, key))
+      size_type bucket = hash(key);
+      if (!map_[bucket])
       {
-        cur->next_ = std::move(cur->next_->next_);
+        return false;
+      }
+      node_t* cur = map_[bucket].get();
+      if (KeyEqual{}(cur->data_.first, key))
+      {
+        map_[bucket] = std::move(cur->next_);
         --size_;
         return true;
       }
-      cur = cur->next_.get();
+      while (cur->next_)
+      {
+        if (KeyEqual{}(cur->next_->data_.first, key))
+        {
+          cur->next_ = std::move(cur->next_->next_);
+          --size_;
+          return true;
+        }
+        cur = cur->next_.get();
+      }
+      return false;
     }
-    return false;
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
   bool HashMap< Key, Value, Hash, KeyEqual >::erase(const iterator& iter)
   {
+    if (iter == end())
+    {
+      return false;
+    }
     return erase(iter->first);
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
   bool HashMap< Key, Value, Hash, KeyEqual >::erase(const const_iterator& iter)
   {
+    if (iter == cend())
+    {
+      return false;
+    }
     return erase(iter->first);
   }
 
@@ -418,7 +438,7 @@ namespace ohantsev
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
-  auto HashMap< Key, Value, Hash, KeyEqual >::begin() const noexcept -> iterator
+  auto HashMap< Key, Value, Hash, KeyEqual >::begin() noexcept -> iterator
   {
     for (size_type bucket = 0; bucket < bucketCount_; ++bucket)
     {
@@ -431,13 +451,25 @@ namespace ohantsev
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
-  auto HashMap< Key, Value, Hash, KeyEqual >::end() const noexcept -> iterator
+  auto HashMap< Key, Value, Hash, KeyEqual >::end() noexcept -> iterator
   {
     return iterator{ nullptr, bucketCount_, this };
   }
 
   template< class Key, class Value, class Hash, class KeyEqual >
-  auto HashMap< Key, Value, Hash, KeyEqual >::find(const Key& key) const -> iterator
+  auto HashMap< Key, Value, Hash, KeyEqual >::begin() const noexcept -> const_iterator
+  {
+    return cbegin();
+  }
+
+  template< class Key, class Value, class Hash, class KeyEqual >
+  auto HashMap< Key, Value, Hash, KeyEqual >::end() const noexcept -> const_iterator
+  {
+    return cend();
+  }
+
+  template< class Key, class Value, class Hash, class KeyEqual >
+  auto HashMap< Key, Value, Hash, KeyEqual >::find(const Key& key) -> iterator
   {
     auto bucket = hash(key);
     for (auto node = map_[bucket].get(); node != nullptr; node = node->next_.get())
@@ -445,6 +477,20 @@ namespace ohantsev
       if (KeyEqual{}(node->data_.first, key))
       {
         return iterator{ node, bucket, this };
+      }
+    }
+    return end();
+  }
+
+  template< class Key, class Value, class Hash, class KeyEqual >
+  auto HashMap< Key, Value, Hash, KeyEqual >::find(const Key& key) const -> const_iterator
+  {
+    auto bucket = hash(key);
+    for (auto node = map_[bucket].get(); node != nullptr; node = node->next_.get())
+    {
+      if (KeyEqual{}(node->data_.first, key))
+      {
+        return const_iterator{ node, bucket, this };
       }
     }
     return end();

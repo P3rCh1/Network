@@ -9,6 +9,7 @@ namespace ohantsev
   {
     T data_;
     UniquePtr< FwdListNode > next_;
+    FwdListNode();
     explicit FwdListNode(T data, UniquePtr< FwdListNode >&& next = nullptr);
     FwdListNode(const FwdListNode&) = delete;
     FwdListNode& operator=(const FwdListNode&) = delete;
@@ -16,6 +17,12 @@ namespace ohantsev
     FwdListNode(FwdListNode&&) = default;
     FwdListNode& operator=(FwdListNode&&) = default;
   };
+
+  template< class T >
+  FwdListNode<T>::FwdListNode():
+    data_(),
+    next_(nullptr)
+  {}
 
   template< class T >
   FwdListNode<T>::FwdListNode(T data, UniquePtr<FwdListNode>&& next):
