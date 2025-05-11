@@ -18,10 +18,11 @@ namespace ohantsev
   public:
     using this_t = Graph;
     using ConstKeyRef = std::reference_wrapper< const Key >;
-    using NodesOutVec = std::vector< ConstKeyRef >;
-    using Connections = std::vector< std::pair< ConstKeyRef, std::size_t > >;
+    using ItemVec = std::vector< ConstKeyRef >;
     struct Connection;
+    using ConnectionVec = std::vector< Connection >;
     struct Way;
+    using WayVec = std::vector< Way >;
 
     explicit Graph(std::size_t capacity = 20);
     ~Graph() noexcept = default;
@@ -34,16 +35,16 @@ namespace ohantsev
     std::size_t size() const noexcept;
     bool insert(const Key& key);
     bool link(const Key& first, const Key& second, std::size_t weight);
-    NodesOutVec nodes() const;
+    ItemVec nodes() const;
     bool contains(const Key& key) const;
     bool contains(const ConstKeyRef& key) const;
-    Connections connections(const Key& key) const;
+    ConnectionVec connections(const Key& key) const;
     bool remove(const Key& key);
     bool removeForce(const Key& key);
     bool removeLink(const Key& first, const Key& second);
     void removeCycles();
     auto path(const Key& start, const Key& end) const -> Way;
-    std::vector< Way > path(const Key& start, const Key& end, std::size_t top) const;
+    WayVec path(const Key& start, const Key& end, std::size_t top) const;
 
   private:
     struct ConnectionPrivate;
@@ -86,8 +87,13 @@ namespace ohantsev
   template< class Key, class Hash, class KeyEqual >
   struct Graph< Key, Hash, KeyEqual >::Connection
   {
-    const Key& target;
-    std::size_t weight;
+    const Key& target_;
+    std::size_t weight_;
+
+    Connection(const Key& target, std::size_t weight) :
+      target_(target),
+      weight_(weight)
+    {}
   };
 
   template< class Key, class Hash, class KeyEqual >
@@ -235,9 +241,9 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::nodes() const -> NodesOutVec
+  auto Graph< Key, Hash, KeyEqual >::nodes() const -> ItemVec
   {
-    NodesOutVec result;
+    ItemVec result;
     result.reserve(nodes_.size());
     for (const auto& pair: nodes_)
     {
@@ -259,18 +265,18 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::connections(const Key& key) const -> Connections
+  auto Graph< Key, Hash, KeyEqual >::connections(const Key& key) const -> ConnectionVec
   {
     auto iter = nodes_.find(key);
     if (iter == nodes_.end())
     {
       throw std::invalid_argument("Node not found");
     }
-    Connections result;
+    ConnectionVec result;
     result.reserve(iter->second->connections_.size());
     for (const auto& pair: iter->second->connections_)
     {
-      result.emplace_back(pair.first, pair.second.weight_);
+      result.emplace_back(pair.first.get(), pair.second.weight_);
     }
     return result;
   }
@@ -425,8 +431,8 @@ namespace ohantsev
   template< class Key, class Hash, class KeyEqual >
   struct Graph< Key, Hash, KeyEqual >::Way
   {
-    std::vector< ConstKeyRef > steps;
-    std::size_t length{ 0 };
+    std::vector< ConstKeyRef > steps_;
+    std::size_t length_{ 0 };
   };
 
   // template< class Key, class Hash, class KeyEqual >
@@ -523,12 +529,12 @@ namespace ohantsev
       auto prevStep = cont.previous[current];
       auto prev = prevStep.first;
       auto weight = prevStep.second;
-      path.steps.emplace_back(std::cref(current->data_));
-      path.length += weight;
+      path.steps_.emplace_back(std::cref(current->data_));
+      path.length_ += weight;
       current = prev;
     }
-    path.steps.emplace_back(std::cref(current->data_));
-    std::reverse(path.steps.begin(), path.steps.end());
+    path.steps_.emplace_back(std::cref(current->data_));
+    std::reverse(path.steps_.begin(), path.steps_.end());
     return path;
   }
 
