@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <queue>
 #include <stdexcept>
+#include <unordered_set>
+
 #include "hash_map.h"
 #include "unique_ptr.h"
 
@@ -24,7 +26,7 @@ namespace ohantsev
     struct Way;
     using WayVec = std::vector< Way >;
 
-    explicit Graph(std::size_t capacity = 20);
+    explicit Graph(std::size_t capacity = 1);
     ~Graph() noexcept = default;
     Graph(this_t&& rhs) noexcept = default;
     this_t& operator=(this_t&& rhs) noexcept = default;
@@ -44,7 +46,7 @@ namespace ohantsev
     bool removeLink(const Key& first, const Key& second);
     void removeCycles();
     auto path(const Key& start, const Key& end) const -> Way;
-    WayVec path(const Key& start, const Key& end, std::size_t top) const;
+    WayVec path(const Key& start, const Key& end, std::size_t count) const;
 
   private:
     struct ConnectionPrivate;
@@ -56,20 +58,31 @@ namespace ohantsev
     struct stepGreater;
     struct DijkstraContainers;
     struct WayGreater;
+    struct GraphModifierRAII;
+    struct WayRefHash;
+    struct WayRefEqual;
+    struct YensContainers;
 
     using Edge = std::pair< std::size_t, std::pair< Node*, Node* > >;
     using NodeMap = HashMap< Key, UniquePtr< Node >, Hash, KeyEqual >;
     using ConnectionMap = HashMap< ConstKeyRef, ConnectionPrivate, RefKeyHash, RefKeyEqual >;
     using Step = std::pair< std::size_t, Node* >;
+    using StepQueue = std::priority_queue< Step, std::vector< Step >, stepGreater >;
+    using WaysQueue = std::priority_queue< Way, WayVec, WayGreater >;
+    using ConstWayRef = std::reference_wrapper< const Way >;
+    using WaySet = std::unordered_set< std::reference_wrapper< const Way >, WayRefHash, WayRefEqual >;
 
     NodeMap nodes_;
 
     std::vector< Edge > collectEdges() const;
     DSU makeUnrelatedDSU() const;
-    static bool isSubPath(const Way& sub, const Way& full);
     Way constructPath(const Key& start, const Key& end) const;
     void pushNeighbors(DijkstraContainers& cont, Node* node) const;
     Way releasePath(const DijkstraContainers& cont, Node* start, Node* end) const;
+    void addAnotherPaths(YensContainers& cont, std::size_t count) const;
+    void pushCandidates(YensContainers& cont) const;
+    auto extractRootPath(const Way& path, std::size_t spurIndex) const -> Way;
+    auto combinePaths(const Way& rootPath, const Way& spurPath) const -> Way;
   };
 
   template< class Key, class Hash, class KeyEqual >
@@ -148,7 +161,7 @@ namespace ohantsev
   {
     bool operator()(const Way& lhs, const Way& rhs) const
     {
-      return lhs.length > rhs.length;
+      return lhs.length_ > rhs.length_;
     }
   };
 
@@ -433,24 +446,30 @@ namespace ohantsev
   {
     std::vector< ConstKeyRef > steps_;
     std::size_t length_{ 0 };
+    bool operator==(const Way& rhs) const;
+    bool operator!=(const Way& rhs) const;
+    bool hasRootPath(const Way& root) const;
   };
 
-  // template< class Key, class Hash, class KeyEqual >
-  // bool Graph< Key, Hash, KeyEqual >::isSubPath(const Way& sub, const Way& full)
-  // {
-  //   if (sub.size() > full.size())
-  //   {
-  //     return false;
-  //   }
-  //   for (std::size_t i = 0; i < sub.size(); ++i)
-  //   {
-  //     if (!KeyEqual{}(sub[i].first.get(), full[i].first.get()))
-  //     {
-  //       return false;
-  //     }
-  //   }
-  //   return true;
-  // }
+  template< class Key, class Hash, class KeyEqual >
+  bool Graph< Key, Hash, KeyEqual >::Way::operator==(const Way& rhs) const
+  {
+    return steps_.size() == steps_.size() &&
+           std::equal(rhs.steps_.begin(), rhs.steps_.end(), steps_.begin(), RefKeyEqual{});
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  bool Graph< Key, Hash, KeyEqual >::Way::operator!=(const Way& rhs) const
+  {
+    return !(*this == rhs);;
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  bool Graph< Key, Hash, KeyEqual >::Way::hasRootPath(const Way& root) const
+  {
+    return steps_.size() > steps_.size() &&
+           std::equal(root.steps_.begin(), root.steps_.end(), steps_.begin(), RefKeyEqual{});
+  }
 
   template< class Key, class Hash, class KeyEqual >
   struct Graph< Key, Hash, KeyEqual >::DijkstraContainers
@@ -460,9 +479,9 @@ namespace ohantsev
 
     DistanceMap distances;
     PreviousMap previous;
-    std::priority_queue< Step, std::vector< Step >, stepGreater > queue;
+    StepQueue queue;
 
-    explicit DijkstraContainers(const Graph& graph, const Key& start)
+    DijkstraContainers(const Graph& graph, const Key& start)
     {
       for (const auto& pair: graph.nodes_)
       {
@@ -551,10 +570,200 @@ namespace ohantsev
 
   template< class Key, class Hash, class KeyEqual >
   auto Graph< Key, Hash, KeyEqual >::path(const Key& start, const Key& end,
-                                          std::size_t top) const -> std::vector< Way >
+                                          std::size_t count) const -> std::vector< Way >
   {
-    std::vector< Way > result;
-    return result;
+    try
+    {
+      YensContainers cont;
+      if (count > 0)
+      {
+        cont.result.reserve(count);
+        cont.result.push_back(path(start, end));
+        cont.set.insert(std::cref(cont.result[0]));
+      }
+      return cont.result;
+    }
+    catch (std::runtime_error& e)
+    {
+      return {};
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::YensContainers
+  {
+    WayVec result;
+    WaysQueue candidates;
+    WaySet set;
+    YensContainers() = default;
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::WayRefHash
+  {
+    size_t operator()(const ConstWayRef& wayRef) const
+    {
+      const Way& way = wayRef.get();
+      size_t seed = way.length_;
+      for (const auto& step: way.steps_)
+      {
+        Hash hasher;
+        seed ^= hasher(step.get()) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+      }
+      return seed;
+    }
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::WayRefEqual
+  {
+    bool operator()(const ConstWayRef& lhsRef, const ConstWayRef& rhsRef) const
+    {
+      const Way& lhs = lhsRef.get();
+      const Way& rhs = rhsRef.get();
+      if (lhs.length_ != rhs.length_ || lhs.steps_.size() != rhs.steps_.size())
+      {
+        return false;
+      }
+      for (std::size_t i = 0; i < lhs.steps_.size(); ++i)
+      {
+        if (lhs.steps_[i].get() != rhs.steps_[i].get())
+        {
+          return false;
+        }
+      }
+      return true;
+    }
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  void Graph< Key, Hash, KeyEqual >::addAnotherPaths(YensContainers& cont, std::size_t count) const
+  {
+    for (std::size_t i = 1; i < count; ++i)
+    {
+      pushCandidates(cont);
+      if (cont.candidates.empty())
+      {
+        break;
+      }
+      cont.result.push_back(cont.candidates.top());
+      cont.set.erase(std::cref(cont.result.back()));
+      cont.set.insert(std::cref(cont.result.back()));
+      cont.candidates.pop();
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::GraphModifierRAII
+  {
+  public:
+    GraphModifierRAII(Graph& graph, const Way& rootPath, const WayVec& result);
+    ~GraphModifierRAII();
+    GraphModifierRAII(const GraphModifierRAII&) = delete;
+    GraphModifierRAII& operator=(const GraphModifierRAII&) = delete;
+    GraphModifierRAII(GraphModifierRAII&&) = default;
+    GraphModifierRAII& operator=(GraphModifierRAII&&) = default;
+
+  private:
+    Graph& graph_;
+    const Key& spurKey_;
+    Node* spurNode_;
+    HashMap< Key, ConnectionPrivate > removedEdges_;
+
+    void removeSpurCnt(const Way& rootPath, const Way& way);
+  };
+
+  template <class Key, class Hash, class KeyEqual >
+  void Graph<Key, Hash, KeyEqual>::GraphModifierRAII::removeSpurCnt(const Way& rootPath, const Way& way)
+  {
+    if (way.hasRootPath(rootPath))
+    {
+      const Key& nextInPath = way.steps_[rootPath.steps_.size()].get();
+      auto it = spurNode_->connections_.find(std::cref(nextInPath));
+      if (it != spurNode_->connections_.end())
+      {
+        removedEdges_.emplace(nextInPath, it->second);
+        spurNode_->connections_.erase(it);
+      }
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  Graph< Key, Hash, KeyEqual >::GraphModifierRAII::GraphModifierRAII(Graph& graph, const Way& rootPath,
+                                                                     const WayVec& result):
+    graph_(graph),
+    spurKey_(rootPath.steps_.back().get())
+  {
+    spurNode_ = graph.nodes_[spurKey_];
+    removeCnts(rootPath, result);
+    removeNodes(rootPath);
+    for (const auto& way: result)
+    {
+      removeSpurCnt(rootPath, way);
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  Graph< Key, Hash, KeyEqual >::GraphModifierRAII::~GraphModifierRAII()
+  {
+    for (auto& pair: removedEdges_)
+    {
+      const Key& target = pair.first;
+      Node* targetNode = graph_.nodes_[target].get();
+      spurNode_->connections_.emplace(std::cref(target), pair.second);
+      targetNode->connections_.emplace(std::cref(spurKey_), ConnectionPrivate{ spurNode_, pair.second.weight_ });
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  void Graph< Key, Hash, KeyEqual >::pushCandidates(YensContainers& cont) const
+  {
+    const Way& previousPath = cont.result.back();
+    for (std::size_t i = 0; i < previousPath.steps_.size() - 1; ++i)
+    {
+      const Key& spurKey = previousPath.steps_[i].get();
+      Way rootPath = extractRootPath(previousPath, i);
+      GraphModifierRAII mod(*this, rootPath, cont.result);
+      Way spurPath;
+      try
+      {
+        spurPath = constructPath(spurKey, cont.result[0].steps_.back().get());
+      }
+      catch (const std::runtime_error&)
+      {
+        continue;
+      }
+      Way totalPath = combinePaths(rootPath, spurPath);
+      if (!cont.set.contains(std::cref(totalPath)))
+      {
+        cont.candidates.push(totalPath);
+        cont.set.insert(cont.candidates.top());
+      }
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  auto Graph< Key, Hash, KeyEqual >::extractRootPath(const Way& path, std::size_t spurIndex) const -> Way
+  {
+    Way rootPath;
+    rootPath.steps_.assign(path.steps_.begin(), path.steps_.begin() + spurIndex + 1);
+    rootPath.length_ = 0;
+    for (std::size_t i = 0; i < spurIndex; ++i)
+    {
+      const Key& from = path.steps_[i].get();
+      const Key& to = path.steps_[i + 1].get();
+      rootPath.length_ += nodes_[from]->connections_[std::cref(to)].weight_;
+    }
+    return rootPath;
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  auto Graph< Key, Hash, KeyEqual >::combinePaths(const Way& rootPath, const Way& spurPath) const -> Way
+  {
+    Way totalPath = rootPath;
+    totalPath.steps_.insert(totalPath.steps_.end(), spurPath.steps_.begin() + 1, spurPath.steps_.end());
+    totalPath.length_ += spurPath.length_;
+    return totalPath;
   }
 }
 #endif

@@ -188,89 +188,99 @@ void testCopyAndMoveSemantics()
 
 void testDijkstraAlgorithm()
 {
-    printSectionHeader("Dijkstra Algorithm");
-    bool allPassed = true;
+  printSectionHeader("Dijkstra Algorithm");
+  bool allPassed = true;
 
-    // Тест 1: Простой линейный граф (A-B-C)
+  // Тест 1: Простой линейный граф (A-B-C)
+  {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+    g.insert("C");
+    g.link("A", "B", 1);
+    g.link("B", "C", 2);
+    auto way = g.path("A", "C");
+    bool correct = (way.steps_.size() == 3) && // A->B->C
+                   (way.steps_[0].get() == "A") && // Старт
+                   (way.steps_[1].get() == "B") && // Промежуточная
+                   (way.steps_[2].get() == "C") && // Конец
+                   (way.length_ == 3); // 1 + 2
+    allPassed &= correct;
+    printTestResult(correct, "Single shortest path (A-B-C)");
+  }
+
+  // Тест 2: Граф с двумя равнозначными путями
+  {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+    g.insert("C");
+    g.insert("D");
+    g.link("A", "B", 1);
+    g.link("B", "C", 1);
+    g.link("A", "D", 1);
+    g.link("D", "C", 1);
+
+    auto way = g.path("A", "C");
+    bool correct = (way.steps_.size() == 3) &&
+                   (way.steps_[0].get() == "A") &&
+                   ((way.steps_[1].get() == "B" && way.steps_[2].get() == "C") ||
+                    (way.steps_[1].get() == "D" && way.steps_[2].get() == "C")) &&
+                   (way.length_ == 2);
+    allPassed &= correct;
+    printTestResult(correct, "Multiple shortest paths (A-B-C or A-D-C)");
+  }
+
+  // Тест 3: Путь в одну вершину (A-A)
+  {
+    Graph< std::string > g;
+    g.insert("A");
+
+    auto way = g.path("A", "A");
+    bool correct = (way.steps_.size() == 1) && // Только A
+                   (way.steps_[0].get() == "A") &&
+                   (way.length_ == 0);
+    allPassed &= correct;
+    printTestResult(correct, "Path for A-A (single node)");
+  }
+
+  // Тест 4: Несвязный граф
+  {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+
+    try
     {
-        Graph<std::string> g;
-        g.insert("A"); g.insert("B"); g.insert("C");
-        g.link("A", "B", 1);
-        g.link("B", "C", 2);
-
-        auto way = g.path("A", "C");
-        bool correct = (way.steps_.size() == 3) &&       // A->B->C
-                      (way.steps_[0].get() == "A") &&    // Старт
-                      (way.steps_[1].get() == "B") &&    // Промежуточная
-                      (way.steps_[2].get() == "C") &&    // Конец
-                      (way.length_ == 3);                // 1 + 2
-        allPassed &= correct;
-        printTestResult(correct, "Single shortest path (A-B-C)");
+      auto way = g.path("A", "B");
+      allPassed = false;
+      printTestResult(false, "Disconnected graph should throw");
     }
-
-    // Тест 2: Граф с двумя равнозначными путями
+    catch (const std::runtime_error&)
     {
-        Graph<std::string> g;
-        g.insert("A"); g.insert("B"); g.insert("C"); g.insert("D");
-        g.link("A", "B", 1);
-        g.link("B", "C", 1);
-        g.link("A", "D", 1);
-        g.link("D", "C", 1);
-
-        auto way = g.path("A", "C");
-        bool correct = (way.steps_.size() == 3) &&
-                      (way.steps_[0].get() == "A") &&
-                      ((way.steps_[1].get() == "B" && way.steps_[2].get() == "C") ||
-                       (way.steps_[1].get() == "D" && way.steps_[2].get() == "C")) &&
-                      (way.length_ == 2);
-        allPassed &= correct;
-        printTestResult(correct, "Multiple shortest paths (A-B-C or A-D-C)");
-    }
-
-    // Тест 3: Путь в одну вершину (A-A)
+      printTestResult(true, "Disconnected graph throws exception");
+    } catch (...)
     {
-        Graph<std::string> g;
-        g.insert("A");
-
-        auto way = g.path("A", "A");
-        bool correct = (way.steps_.size() == 1) &&       // Только A
-                      (way.steps_[0].get() == "A") &&
-                      (way.length_ == 0);
-        allPassed &= correct;
-        printTestResult(correct, "Path for A-A (single node)");
+      allPassed = false;
+      printTestResult(false, "Wrong exception type");
     }
+  }
 
-    // Тест 4: Несвязный граф
-    {
-        Graph<std::string> g;
-        g.insert("A");
-        g.insert("B");
+  // Тест 5: Проверка длины пути
+  {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+    g.insert("C");
+    g.link("A", "B", 5);
+    g.link("B", "C", 3);
 
-        try {
-            auto way = g.path("A", "B");
-            allPassed = false;
-            printTestResult(false, "Disconnected graph should throw");
-        } catch (const std::runtime_error&) {
-            printTestResult(true, "Disconnected graph throws exception");
-        } catch (...) {
-            allPassed = false;
-            printTestResult(false, "Wrong exception type");
-        }
-    }
+    auto way = g.path("A", "C");
+    allPassed &= (way.length_ == 8);
+    printTestResult(way.length_ == 8, "Correct path length calculation");
+  }
 
-    // Тест 5: Проверка длины пути
-    {
-        Graph<std::string> g;
-        g.insert("A"); g.insert("B"); g.insert("C");
-        g.link("A", "B", 5);
-        g.link("B", "C", 3);
-
-        auto way = g.path("A", "C");
-        allPassed &= (way.length_ == 8);
-        printTestResult(way.length_ == 8, "Correct path length calculation");
-    }
-
-    printTestResult(allPassed, "TOTAL");
+  printTestResult(allPassed, "TOTAL");
 }
 
 void testRemovalOperations()
@@ -313,6 +323,83 @@ void testRemovalOperations()
   printTestResult(allPassed, "TOTAL");
 }
 
+void testYensAlgorithm()
+{
+  printSectionHeader("Yen's K-Shortest Paths");
+  bool allPassed = true;
+
+  // Граф с несколькими кратчайшими путями
+  {
+    Graph<std::string> g;
+    g.insert("A");
+    g.insert("B");
+    g.insert("C");
+    g.insert("D");
+    g.insert("E");
+
+    g.link("A", "B", 1);
+    g.link("B", "E", 1);
+    g.link("A", "C", 1);
+    g.link("C", "D", 1);
+    g.link("D", "E", 1);
+    g.link("B", "C", 1); // Кратчайшие пути: A-B-E и A-C-D-E и A-B-C-D-E
+
+    auto paths = g.path("A", "E", 3);
+
+    bool countCorrect = paths.size() == 3;
+    printTestResult(countCorrect, "Finds 3 shortest paths");
+
+    bool path1 = (paths[0].steps_.size() == 3 &&
+                  paths[0].steps_[0].get() == "A" &&
+                  paths[0].steps_[1].get() == "B" &&
+                  paths[0].steps_[2].get() == "E" &&
+                  paths[0].length_ == 2);
+
+    bool path2 = (paths[1].steps_[0].get() == "A" &&
+                  paths[1].steps_[1].get() == "C" &&
+                  paths[1].steps_[2].get() == "D" &&
+                  paths[1].steps_[3].get() == "E" &&
+                  paths[1].length_ == 3);
+
+    bool path3 = (paths[2].steps_.size() == 5 &&
+                  paths[2].steps_[1].get() == "B" &&
+                  paths[2].steps_[2].get() == "C" &&
+                  paths[2].steps_[3].get() == "D" &&
+                  paths[2].steps_[4].get() == "E");
+
+    allPassed &= path1 && path2 && path3;
+    printTestResult(path1, "First shortest path A-B-E");
+    printTestResult(path2, "Second shortest path A-C-D-E");
+    printTestResult(path3, "Third shortest path A-B-C-D-E");
+  }
+
+  // Проверка выброса исключения при отсутствии пути
+  {
+    Graph<std::string> g;
+    g.insert("A");
+    g.insert("B");
+
+    try
+    {
+      auto paths = g.path("A", "B", 2);
+      printTestResult(false, "No path should throw");
+      allPassed = false;
+    }
+    catch (const std::runtime_error&)
+    {
+      printTestResult(true, "Throws exception if no path exists");
+    }
+    catch (...)
+    {
+      printTestResult(false, "Wrong exception type");
+      allPassed = false;
+    }
+  }
+
+  printTestResult(allPassed, "TOTAL");
+}
+
+
 int main()
 {
   testNodeInsertion();
@@ -321,5 +408,6 @@ int main()
   testCopyAndMoveSemantics();
   testRemovalOperations();
   testDijkstraAlgorithm();
+  testYensAlgorithm();
   return 0;
 }
