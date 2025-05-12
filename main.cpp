@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <vector>
 #include <string>
 #include "graph_algorithms.h"
@@ -51,8 +51,7 @@ void testLinkOperations()
   allPassed &= !g.link("A", "A", 0);
   printTestResult(!g.link("A", "A", 0), "Reject self-link");
 
-  bool symmetric = !g.connections("B").empty() &&
-                   g.connections("B")[0].target_ == "A";
+  bool symmetric = !g.watch("B").empty() && g.watch("B").at("A") == 5;
   allPassed &= symmetric;
   printTestResult(symmetric, "Links are symmetric");
 
@@ -78,18 +77,18 @@ void testCycleRemoval()
   g.removeCycles();
 
   size_t edgeCount = 0;
-  for (const auto& node: g.nodes())
+  for (const auto& node: g.watch())
   {
-    edgeCount += g.connections(node).size();
+    edgeCount += node.second.size();
   }
   edgeCount /= 2;
 
   allPassed &= (edgeCount == 2);
   printTestResult(edgeCount == 2, "Removes one edge from triangle");
 
-  bool connected = !g.connections(1).empty() &&
-                   !g.connections(2).empty() &&
-                   !g.connections(3).empty();
+  bool connected = !g.watch(1).empty() &&
+                   !g.watch(2).empty() &&
+                   !g.watch(3).empty();
   allPassed &= connected;
   printTestResult(connected, "Graph stays connected");
 
@@ -98,9 +97,9 @@ void testCycleRemoval()
   g2.insert("B");
   g2.link("A", "B", 1);
 
-  size_t before = g2.connections("A").size();
+  size_t before = g2.watch("A").size();
   g2.removeCycles();
-  size_t after = g2.connections("A").size();
+  size_t after = g2.watch("A").size();
 
   allPassed &= (before == after);
   printTestResult(before == after, "Acyclic graph unchanged");
@@ -111,70 +110,56 @@ void testCycleRemoval()
 void testCopyAndMoveSemantics()
 {
   printSectionHeader("Copy/Move Semantics");
-  bool allPassed = true;
-
-  // Test copy constructor
-  {
+  bool allPassed = true; {
     Graph< int > g1;
     g1.insert(1);
     g1.insert(2);
     g1.link(1, 2, 10);
 
-    Graph< int > g2(g1); // Copy constructor
+    Graph< int > g2(g1);
 
     allPassed &= (g1.size() == g2.size());
     printTestResult(g1.size() == g2.size(), "Copy constructor - size match");
 
-    bool linksCopied = !g2.connections(1).empty() &&
-                       g2.connections(1)[0].target_ == 2;
+    bool linksCopied = !g2.watch(1).empty() && g2.watch(1).at(2) == 10;
     allPassed &= linksCopied;
     printTestResult(linksCopied, "Copy constructor - links copied");
-  }
-
-  // Test move constructor
-  {
+  } {
     Graph< int > g1;
     g1.insert(1);
     g1.insert(2);
     g1.link(1, 2, 10);
 
     size_t originalSize = g1.size();
-    Graph< int > g2(std::move(g1)); // Move constructor
+    Graph< int > g2(std::move(g1));
 
     allPassed &= (g2.size() == originalSize);
     printTestResult(g2.size() == originalSize, "Move constructor - size preserved");
 
     allPassed &= (g1.size() == 0);
     printTestResult(g1.size() == 0, "Move constructor - original empty");
-  }
-
-  // Test copy assignment
-  {
+  } {
     Graph< int > g1, g2;
     g1.insert(1);
     g1.insert(2);
     g1.link(1, 2, 10);
 
-    g2 = g1; // Copy assignment
+    g2 = g1;
 
     allPassed &= (g1.size() == g2.size());
     printTestResult(g1.size() == g2.size(), "Copy assignment - size match");
 
-    bool linksCopied = !g2.connections(1).empty() &&
-                       g2.connections(1)[0].target_ == 2;
+    bool linksCopied = !g2.watch(1).empty() && g2.watch(1).at(2) == 10;
     allPassed &= linksCopied;
     printTestResult(linksCopied, "Copy assignment - links copied");
-  }
-
-  // Test move assignment
-  {
+  } {
     Graph< int > g1, g2;
     g1.insert(1);
     g1.insert(2);
     g1.link(1, 2, 10);
 
     size_t originalSize = g1.size();
-    g2 = std::move(g1); // Move assignment
+    g2 = std::move(g1);
 
     allPassed &= (g2.size() == originalSize);
     printTestResult(g2.size() == originalSize, "Move assignment - size preserved");
@@ -186,31 +171,64 @@ void testCopyAndMoveSemantics()
   printTestResult(allPassed, "TOTAL");
 }
 
+void testRemovalOperations()
+{
+  printSectionHeader("Removal Operations");
+  Graph< int > g;
+  bool allPassed = true;
+
+  g.insert(1);
+  g.insert(2);
+  g.insert(3);
+
+  g.link(1, 2, 1);
+  g.link(2, 3, 2);
+
+  allPassed &= g.removeLink(1, 2);
+  printTestResult(allPassed, "Remove existing link");
+
+  allPassed &= !g.removeLink(1, 2);
+  printTestResult(!g.removeLink(1, 2), "Can't remove non-existent link");
+
+  bool symmetricRemoval = g.watch(2).size() == 1;
+  allPassed &= symmetricRemoval;
+  printTestResult(symmetricRemoval, "Link removal is symmetric");
+
+  allPassed &= !g.remove(2);
+  printTestResult(!g.remove(2), "Can't remove connected node");
+
+  allPassed &= g.remove(1);
+  printTestResult(allPassed, "Remove isolated node");
+
+  allPassed &= g.removeForce(2);
+  printTestResult(allPassed, "Force remove connected node");
+
+  allPassed &= (g.size() == 1);
+  printTestResult(g.size() == 1, "Correct size after removals");
+
+  printTestResult(allPassed, "TOTAL");
+}
+
 void testDijkstraAlgorithm()
 {
   printSectionHeader("Dijkstra Algorithm");
-  bool allPassed = true;
-
-  // Тест 1: Простой линейный граф (A-B-C)
-  {
+  bool allPassed = true; {
     Graph< std::string > g;
     g.insert("A");
     g.insert("B");
     g.insert("C");
     g.link("A", "B", 1);
     g.link("B", "C", 2);
+
     auto way = g.path("A", "C");
-    bool correct = (way.steps_.size() == 3) && // A->B->C
-                   (way.steps_[0].get() == "A") && // Старт
-                   (way.steps_[1].get() == "B") && // Промежуточная
-                   (way.steps_[2].get() == "C") && // Конец
-                   (way.length_ == 3); // 1 + 2
+    bool correct = (way.steps_.size() == 3) &&
+                   (way.steps_[0] == "A") &&
+                   (way.steps_[1] == "B") &&
+                   (way.steps_[2] == "C") &&
+                   (way.length_ == 3);
     allPassed &= correct;
     printTestResult(correct, "Single shortest path (A-B-C)");
-  }
-
-  // Тест 2: Граф с двумя равнозначными путями
-  {
+  } {
     Graph< std::string > g;
     g.insert("A");
     g.insert("B");
@@ -223,51 +241,31 @@ void testDijkstraAlgorithm()
 
     auto way = g.path("A", "C");
     bool correct = (way.steps_.size() == 3) &&
-                   (way.steps_[0].get() == "A") &&
-                   ((way.steps_[1].get() == "B" && way.steps_[2].get() == "C") ||
-                    (way.steps_[1].get() == "D" && way.steps_[2].get() == "C")) &&
+                   (way.steps_[0] == "A") &&
+                   ((way.steps_[1] == "B" && way.steps_[2] == "C") ||
+                    (way.steps_[1] == "D" && way.steps_[2] == "C")) &&
                    (way.length_ == 2);
     allPassed &= correct;
     printTestResult(correct, "Multiple shortest paths (A-B-C or A-D-C)");
-  }
-
-  // Тест 3: Путь в одну вершину (A-A)
-  {
+  } {
     Graph< std::string > g;
     g.insert("A");
 
     auto way = g.path("A", "A");
-    bool correct = (way.steps_.size() == 1) && // Только A
-                   (way.steps_[0].get() == "A") &&
+    bool correct = (way.steps_.size() == 1) &&
+                   (way.steps_[0] == "A") &&
                    (way.length_ == 0);
     allPassed &= correct;
     printTestResult(correct, "Path for A-A (single node)");
-  }
-
-  // Тест 4: Несвязный граф
-  {
+  } {
     Graph< std::string > g;
     g.insert("A");
     g.insert("B");
 
-    try
-    {
-      auto way = g.path("A", "B");
-      allPassed = false;
-      printTestResult(false, "Disconnected graph should throw");
-    }
-    catch (const std::runtime_error&)
-    {
-      printTestResult(true, "Disconnected graph throws exception");
-    } catch (...)
-    {
-      allPassed = false;
-      printTestResult(false, "Wrong exception type");
-    }
-  }
-
-  // Тест 5: Проверка длины пути
-  {
+    auto way = g.path("A", "B");
+    allPassed &= way.steps_.empty() && way.length_ == 0;
+    printTestResult(way.steps_.empty() && way.length_ == 0, "Disconnected graph should return empty paths");
+  } {
     Graph< std::string > g;
     g.insert("A");
     g.insert("B");
@@ -283,122 +281,228 @@ void testDijkstraAlgorithm()
   printTestResult(allPassed, "TOTAL");
 }
 
-void testRemovalOperations()
+void testNoCyclesPaths()
 {
-  printSectionHeader("Removal Operations");
-  Graph< std::string > g;
+  printSectionHeader("Top paths without cycles");
   bool allPassed = true;
 
-  g.insert("A");
-  g.insert("B");
-  g.insert("C");
-  g.link("A", "B", 1);
-  g.link("B", "C", 2);
-
-  // Test removeLink
-  allPassed &= g.removeLink("A", "B");
-  printTestResult(allPassed, "Remove existing link");
-
-  allPassed &= !g.removeLink("A", "B");
-  printTestResult(!g.removeLink("A", "B"), "Can't remove non-existent link");
-
-  bool symmetricRemoval = g.connections("B").size() == 1;
-  allPassed &= symmetricRemoval;
-  printTestResult(symmetricRemoval, "Link removal is symmetric");
-
-  // Test remove
-  allPassed &= !g.remove("B");
-  printTestResult(!g.remove("B"), "Can't remove connected node");
-
-  allPassed &= g.remove("A");
-  printTestResult(!g.remove("A"), "Remove isolated node");
-
-  // Test removeForce
-  allPassed &= g.removeForce("B");
-  printTestResult(!g.removeForce("B"), "Force remove connected node");
-
-  allPassed &= (g.size() == 1);
-  printTestResult(g.size() == 1, "Correct size after removals");
-
-  printTestResult(allPassed, "TOTAL");
-}
-
-void testYensAlgorithm()
-{
-  printSectionHeader("Yen's K-Shortest Paths");
-  bool allPassed = true;
-
-  // Граф с несколькими кратчайшими путями
+  auto comparePaths = [](const auto& paths, const std::vector< std::vector< std::string > >& expected)
   {
-    Graph<std::string> g;
+    if (paths.size() != expected.size()) return false;
+
+    std::vector< bool > matched(expected.size(), false);
+    for (const auto& path: paths)
+    {
+      bool found = false;
+      for (size_t i = 0; i < expected.size(); ++i)
+      {
+        if (!matched[i] && path.steps_ == expected[i])
+        {
+          matched[i] = true;
+          found = true;
+          break;
+        }
+      }
+      if (!found) return false;
+    }
+    return true;
+  }; {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+    g.insert("C");
+    g.link("A", "B", 1);
+    g.link("B", "C", 2);
+
+    auto paths = g.nPathsNoCycles("A", "C", 2);
+    std::vector< std::vector< std::string > > expected = { { "A", "B", "C" } };
+
+    bool correct = comparePaths(paths, expected) && (paths[0].length_ == 3);
+    allPassed &= correct;
+    printTestResult(correct, "Single shortest path (A-B-C) with Yen's");
+  } {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+    g.insert("C");
+    g.insert("D");
+    g.link("A", "B", 1);
+    g.link("B", "C", 1);
+    g.link("A", "D", 1);
+    g.link("D", "C", 1);
+
+    auto paths = g.nPathsNoCycles("A", "C", 2);
+    std::vector< std::vector< std::string > > expected = {
+    { "A", "B", "C" },
+    { "A", "D", "C" }
+    };
+
+    bool correct = comparePaths(paths, expected) &&
+                   (paths[0].length_ == 2) &&
+                   (paths[1].length_ == 2);
+    allPassed &= correct;
+    printTestResult(correct, "Multiple shortest paths (A-B-C or A-D-C) with Yen's");
+  } {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+
+    auto paths = g.nPathsNoCycles("A", "B", 2);
+    bool correct = paths.empty();
+    allPassed &= correct;
+    printTestResult(correct, "Disconnected graph should return empty paths");
+  } {
+    Graph< std::string > g;
     g.insert("A");
     g.insert("B");
     g.insert("C");
     g.insert("D");
     g.insert("E");
-
     g.link("A", "B", 1);
-    g.link("B", "E", 1);
-    g.link("A", "C", 1);
-    g.link("C", "D", 1);
-    g.link("D", "E", 1);
-    g.link("B", "C", 1); // Кратчайшие пути: A-B-E и A-C-D-E и A-B-C-D-E
+    g.link("B", "C", 1);
+    g.link("A", "D", 2);
+    g.link("D", "C", 2);
+    g.link("A", "E", 5);
+    g.link("E", "C", 1);
 
-    auto paths = g.path("A", "E", 3);
+    auto paths = g.nPathsNoCycles("A", "C", 3);
+    std::vector< std::vector< std::string > > expected = {
+    { "A", "B", "C" },
+    { "A", "D", "C" },
+    { "A", "E", "C" }
+    };
 
-    bool countCorrect = paths.size() == 3;
-    printTestResult(countCorrect, "Finds 3 shortest paths");
-
-    bool path1 = (paths[0].steps_.size() == 3 &&
-                  paths[0].steps_[0].get() == "A" &&
-                  paths[0].steps_[1].get() == "B" &&
-                  paths[0].steps_[2].get() == "E" &&
-                  paths[0].length_ == 2);
-
-    bool path2 = (paths[1].steps_[0].get() == "A" &&
-                  paths[1].steps_[1].get() == "C" &&
-                  paths[1].steps_[2].get() == "D" &&
-                  paths[1].steps_[3].get() == "E" &&
-                  paths[1].length_ == 3);
-
-    bool path3 = (paths[2].steps_.size() == 5 &&
-                  paths[2].steps_[1].get() == "B" &&
-                  paths[2].steps_[2].get() == "C" &&
-                  paths[2].steps_[3].get() == "D" &&
-                  paths[2].steps_[4].get() == "E");
-
-    allPassed &= path1 && path2 && path3;
-    printTestResult(path1, "First shortest path A-B-E");
-    printTestResult(path2, "Second shortest path A-C-D-E");
-    printTestResult(path3, "Third shortest path A-B-C-D-E");
-  }
-
-  // Проверка выброса исключения при отсутствии пути
-  {
-    Graph<std::string> g;
+    bool correct = comparePaths(paths, expected) &&
+                   (paths[0].length_ == 2) &&
+                   (paths[1].length_ == 4) &&
+                   (paths[2].length_ == 6);
+    allPassed &= correct;
+    printTestResult(correct, "Multiple paths with different lengths");
+  } {
+    Graph< std::string > g;
     g.insert("A");
     g.insert("B");
+    g.insert("C");
+    g.link("A", "B", 1);
+    g.link("B", "C", 1);
 
-    try
-    {
-      auto paths = g.path("A", "B", 2);
-      printTestResult(false, "No path should throw");
-      allPassed = false;
-    }
-    catch (const std::runtime_error&)
-    {
-      printTestResult(true, "Throws exception if no path exists");
-    }
-    catch (...)
-    {
-      printTestResult(false, "Wrong exception type");
-      allPassed = false;
-    }
+    auto paths = g.nPathsNoCycles("A", "C", 5);
+    std::vector< std::vector< std::string > > expected = { { "A", "B", "C" } };
+
+    bool correct = comparePaths(paths, expected);
+    allPassed &= correct;
+    printTestResult(correct, "Request more paths than exist");
+  } {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+    g.insert("C");
+    g.insert("D");
+    g.link("A", "B", 1);
+    g.link("B", "C", 1);
+    g.link("C", "D", 1);
+    g.link("D", "B", 1);
+
+    auto paths = g.nPathsNoCycles("A", "C", 3);
+    std::vector< std::vector< std::string > > expected = { { "A", "B", "C" }, { "A", "B", "D", "C" } };
+
+    bool correct = comparePaths(paths, expected);
+    allPassed &= correct;
+    printTestResult(correct, "Handles graph with cycles (ignores cyclic paths)");
+  } {
+    Graph< std::string > g;
+    g.insert("1");
+    g.insert("2");
+    g.insert("3");
+    g.insert("4");
+    g.insert("5");
+    g.link("1", "2", 1);
+    g.link("2", "5", 1);
+    g.link("1", "3", 1);
+    g.link("3", "4", 1);
+    g.link("4", "5", 2);
+
+    auto paths = g.nPathsNoCycles("1", "5", 2);
+    std::vector< std::vector< std::string > > expected = {
+    { "1", "2", "5" },
+    { "1", "3", "4", "5" }
+    };
+
+    bool correct = comparePaths(paths, expected) &&
+                   (paths[0].length_ == 2) &&
+                   (paths[1].length_ == 4);
+    allPassed &= correct;
+    printTestResult(correct, "Different path lengths are ordered correctly");
   }
 
   printTestResult(allPassed, "TOTAL");
 }
 
+template< class Key, class Hash = std::hash< Key >, class KeyEqual = std::equal_to< Key > >
+bool containsPath(const std::vector< typename Graph< Key, Hash, KeyEqual >::Way >& paths,
+                  const std::vector< Key >& expected)
+{
+  for (const auto& path: paths)
+  {
+    if (path.steps_ == expected)
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+void testWithCyclesPaths()
+{
+  printSectionHeader("Top paths with cycles allowed");
+  bool allPassed = true; {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+    g.insert("C");
+    g.insert("D");
+    g.link("A", "B", 1);
+    g.link("B", "C", 1);
+    g.link("C", "D", 1);
+    g.link("D", "B", 1);
+
+    auto paths = g.nPaths("A", "C", 5);
+
+    bool foundBasic = containsPath< std::string >(paths, { "A", "B", "C" });
+    bool foundCyclePath = containsPath< std::string >(paths, { "A", "B", "D", "C" }) ||
+                          containsPath< std::string >(paths, { "A", "B", "C", "D", "B", "C" });
+
+    bool correct = foundBasic && foundCyclePath;
+    allPassed &= correct;
+    printTestResult(correct, "Graph with cycle B->C->D->B");
+  } {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+    g.insert("C");
+    g.link("A", "B", 1);
+    g.link("B", "A", 1);
+    g.link("B", "C", 1);
+    g.link("C", "B", 1);
+
+    auto paths = g.nPaths("A", "C", 5);
+
+    bool correct = containsPath< std::string >(paths, { "A", "B", "C" }) &&
+                   (containsPath< std::string >(paths, { "A", "B", "A", "B", "C" }) ||
+                    containsPath< std::string >(paths, { "A", "B", "C", "B", "C" }));
+    allPassed &= correct;
+    printTestResult(correct, "Fully connected graph with cycles");
+  } {
+    Graph< std::string > g;
+    g.insert("A");
+    g.insert("B");
+    bool correct = g.nPaths("A", "B", 2).empty();
+    allPassed &= correct;
+    printTestResult(correct, "Disconnected graph returns empty");
+  }
+
+  printTestResult(allPassed, "TOTAL");
+}
 
 int main()
 {
@@ -408,6 +512,7 @@ int main()
   testCopyAndMoveSemantics();
   testRemovalOperations();
   testDijkstraAlgorithm();
-  testYensAlgorithm();
+  testNoCyclesPaths();
+  testWithCyclesPaths();
   return 0;
 }

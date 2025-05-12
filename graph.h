@@ -1,10 +1,13 @@
 ﻿#ifndef GRAPH_H
 #define GRAPH_H
+#include <queue>
+#include <limits>
 #include <vector>
-#include <memory>
 #include <algorithm>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
+#include "vector_hash.h"
 
 namespace ohantsev
 {
@@ -15,372 +18,533 @@ namespace ohantsev
   {
   public:
     using this_t = Graph;
-    using ConstKeyRef = std::reference_wrapper< const Key >;
-    using NodesOutVec = std::vector< ConstKeyRef >;
-    using Connections = std::vector< std::pair< ConstKeyRef, std::size_t > >;
-    using Way = std::vector< std::pair< ConstKeyRef, std::size_t > >;
+    using ConnectionMap = std::unordered_map< Key, std::size_t, Hash, KeyEqual >;
+    using GraphMap = std::unordered_map< Key, ConnectionMap >;
+    struct Way;
 
-    explicit Graph(std::size_t capacity = 20);
+    explicit Graph(std::size_t capacity = 10);
     ~Graph() noexcept = default;
     Graph(this_t&& rhs) noexcept = default;
     this_t& operator=(this_t&& rhs) noexcept = default;
-    Graph(const this_t& rhs);
-    this_t& operator=(const this_t& rhs);
+    Graph(const this_t& rhs) = default;
+    this_t& operator=(const this_t& rhs) = default;
 
     void clear() noexcept;
     std::size_t size() const noexcept;
     bool insert(const Key& key);
-    bool link(const Key& first, const Key& second, std::size_t weight);
-    NodesOutVec nodes() const;
-    Connections connections(const Key& key) const;
+    bool link(const Key& from, const Key& to, std::size_t weight);
+    const GraphMap& watch() const noexcept;
+    const ConnectionMap& watch(const Key& key) const noexcept;
+    bool contains(const Key& key) const;
     bool remove(const Key& key);
     bool removeForce(const Key& key);
     bool removeLink(const Key& first, const Key& second);
     void removeCycles();
-    Way path() const;
-    std::vector< Way > path(std::size_t top) const;
+    Way path(const Key& start, const Key& end) const;
+    std::vector< Way > nPaths(const Key& start, const Key& end, std::size_t k) const;
+    std::vector< Way > nPathsNoCycles(const Key& start, const Key& end, std::size_t k) const;
 
   private:
-    struct Connection;
-    struct Node;
-
-    struct RefKeyHash
-    {
-      std::size_t operator()(const ConstKeyRef& ref) const;
-    };
-
-    struct RefKeyEqual
-    {
-      bool operator()(const ConstKeyRef& a, const ConstKeyRef& b) const;
-    };
-
-    using NodeMap = std::unordered_map< Key, std::unique_ptr< Node >, Hash, KeyEqual >;
-    using ConnectionMap = std::unordered_map< ConstKeyRef, Connection, RefKeyHash, RefKeyEqual >;
-
-    NodeMap nodes_;
+    GraphMap graph_;
 
     struct DSU;
-
-    using Edge = std::pair< std::size_t, std::pair< Node*, Node* > >;
-
-    struct edgeLess
-    {
-      bool operator()(const Edge& lhs, const Edge& rhs) const;
-    };
+    struct Edge;
+    struct DijkstraContainers;
+    class DijkstraPathFinder;
+    template< bool AllowCycles >
+    class NPathsFinder;
 
     std::vector< Edge > collectEdges() const;
-    DSU makeUnrelatedDSU() const;
   };
-
-  template< class Key, class Hash, class KeyEqual >
-  struct Graph< Key, Hash, KeyEqual >::Connection
-  {
-    Node* target_;
-    std::size_t weight_;
-
-    Connection(Node* target, size_t weight) :
-      target_(target),
-      weight_(weight)
-    {}
-  };
-
-  template< class Key, class Hash, class KeyEqual >
-  struct Graph< Key, Hash, KeyEqual >::Node
-  {
-    const Key& data_;
-    ConnectionMap connections_;
-
-    explicit Node(const Key& key):
-      data_(key)
-    {}
-  };
-
-  template< class Key, class Hash, class KeyEqual >
-  std::size_t Graph< Key, Hash, KeyEqual >::RefKeyHash::operator()(const ConstKeyRef& ref) const
-  {
-    return Hash{}(ref.get());
-  }
-
-  template< class Key, class Hash, class KeyEqual >
-  bool Graph< Key, Hash, KeyEqual >::RefKeyEqual::operator()(const ConstKeyRef& a, const ConstKeyRef& b) const
-  {
-    return KeyEqual{}(a.get(), b.get());
-  }
 
   template< class Key, class Hash, class KeyEqual >
   Graph< Key, Hash, KeyEqual >::Graph(size_t capacity)
   {
-    nodes_.reserve(capacity);
-  }
-
-  template< class Key, class Hash, class KeyEqual >
-  Graph< Key, Hash, KeyEqual >::Graph(const this_t& rhs)
-  {
-    nodes_.reserve(rhs.nodes_.size());
-    for (const auto& rhsNodePair: rhs.nodes_)
-    {
-      nodes_.emplace(rhsNodePair.first, std::make_unique< Node >(rhsNodePair.first));
-    }
-    for (auto& newNodePair: nodes_)
-    {
-      const Key& key = newNodePair.first;
-      Node* node = newNodePair.second.get();
-      for (const auto& rhsCntPair: rhs.nodes_.at(key)->connections_)
-      {
-        const Key& targetKey = rhsCntPair.first.get();
-        const std::size_t weight = rhsCntPair.second.weight_;
-        Node* target = nodes_[targetKey].get();
-        node->connections_.emplace(std::cref(target->data_), Connection{ target, weight });
-      }
-    }
-  }
-
-  template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::operator=(const this_t& rhs) -> this_t&
-  {
-    if (this != &rhs)
-    {
-      Graph temp(rhs);
-      std::swap(nodes_, temp.nodes_);
-    }
-    return *this;
+    graph_.reserve(capacity);
   }
 
   template< class Key, class Hash, class KeyEqual >
   void Graph< Key, Hash, KeyEqual >::clear() noexcept
   {
-    nodes_.clear();
+    graph_.clear();
   }
 
   template< class Key, class Hash, class KeyEqual >
   std::size_t Graph< Key, Hash, KeyEqual >::size() const noexcept
   {
-    return nodes_.size();
+    return graph_.size();
   }
 
   template< class Key, class Hash, class KeyEqual >
   bool Graph< Key, Hash, KeyEqual >::insert(const Key& key)
   {
-    auto result = nodes_.emplace(key, nullptr);
-    if (result.second)
-    {
-      result.first->second = std::make_unique< Node >(result.first->first);
-    }
-    return result.second;
+    return graph_.emplace(key, ConnectionMap{}).second;
   }
 
   template< class Key, class Hash, class KeyEqual >
-  bool Graph< Key, Hash, KeyEqual >::link(const Key& first, const Key& second, std::size_t weight)
+  bool Graph< Key, Hash, KeyEqual >::link(const Key& from, const Key& to, std::size_t weight)
   {
-    if (KeyEqual{}(first, second))
+    if (from == to || weight == 0 || !contains(from) || !contains(to))
     {
       return false;
     }
-    auto firstIter = nodes_.find(first);
-    auto secondIter = nodes_.find(second);
-    if (firstIter == nodes_.end() || secondIter == nodes_.end())
-    {
-      return false;
-    }
-    Node* firstNode = firstIter->second.get();
-    Node* secondNode = secondIter->second.get();
-    auto& firstCnts = firstNode->connections_;
-    auto& secondCnts = secondNode->connections_;
-    if (firstCnts.find(std::cref(secondIter->first)) != firstCnts.end())
-    {
-      return false;
-    }
-    firstCnts.emplace(std::cref(secondIter->first), Connection{ secondNode, weight });
-    secondCnts.emplace(std::cref(firstIter->first), Connection{ firstNode, weight });
-    return true;
+    bool success = graph_[from].emplace(to, weight).second;
+    success &= graph_[to].emplace(from, weight).second;
+    return success;
   }
 
   template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::nodes() const -> NodesOutVec
+  auto Graph< Key, Hash, KeyEqual >::watch() const noexcept -> const GraphMap&
   {
-    NodesOutVec result;
-    result.reserve(nodes_.size());
-    for (const auto& pair: nodes_)
-    {
-      result.emplace_back(pair.first);
-    }
-    return result;
+    return graph_;
   }
 
   template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::connections(const Key& key) const -> Connections
+  auto Graph< Key, Hash, KeyEqual >::watch(const Key& key) const noexcept -> const ConnectionMap&
   {
-    auto iter = nodes_.find(key);
-    if (iter == nodes_.end())
-    {
-      throw std::invalid_argument("Node not found");
-    }
-    Connections result;
-    result.reserve(iter->second->connections_.size());
-    for (const auto& pair: iter->second->connections_)
-    {
-      result.emplace_back(pair.first, pair.second.weight_);
-    }
-    return result;
+    return graph_.at(key);
   }
 
   template< class Key, class Hash, class KeyEqual >
-bool Graph< Key, Hash, KeyEqual >::remove(const Key& key)
+  bool Graph< Key, Hash, KeyEqual >::contains(const Key& key) const
   {
-    auto iter = nodes_.find(key);
-    if (iter == nodes_.end() || !iter->second->connections_.empty())
+    return graph_.find(key) != graph_.end();
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  bool Graph< Key, Hash, KeyEqual >::remove(const Key& key)
+  {
+    auto iter = graph_.find(key);
+    if (iter == graph_.end() || !iter->second.empty())
     {
       return false;
     }
-    nodes_.erase(iter);
-    return true;
+    return graph_.erase(iter->first);
   }
 
   template< class Key, class Hash, class KeyEqual >
   bool Graph< Key, Hash, KeyEqual >::removeForce(const Key& key)
   {
-    auto iter = nodes_.find(key);
-    if (iter == nodes_.end())
-    {
-      return false;
-    }
-    for (auto& pair: iter->second->connections_)
-    {
-      nodes_[pair.first.get()]->connections_.erase(std::cref(iter->first));
-    }
-    nodes_.erase(iter);
-    return true;
+    return graph_.erase(key);
   }
 
   template< class Key, class Hash, class KeyEqual >
   bool Graph< Key, Hash, KeyEqual >::removeLink(const Key& first, const Key& second)
   {
-    if (KeyEqual{}(first, second))
+    try
+    {
+      return graph_.at(first).erase(second) && graph_.at(second).erase(first);
+    }
+    catch (const std::out_of_range&)
     {
       return false;
     }
-    auto firstIter = nodes_.find(first);
-    auto secondIter = nodes_.find(second);
-    if (firstIter == nodes_.end() || secondIter == nodes_.end())
-    {
-      return false;
-    }
-    return firstIter->second->connections_.erase(std::cref(secondIter->first)) &&
-           secondIter->second->connections_.erase(std::cref(firstIter->first));
   }
 
   template< class Key, class Hash, class KeyEqual >
   struct Graph< Key, Hash, KeyEqual >::DSU
   {
-    std::unordered_map< Node*, Node* > parent;
-    std::unordered_map< Node*, std::size_t > rank;
+    std::unordered_map< Key, Key > parent;
+    std::unordered_map< Key, std::size_t > rank;
 
-    Node* findRoot(Node* node);
-    void unionSets(Node* first, Node* second);
+    explicit DSU(const Graph& graph);
+    Key findRoot(const Key& key);
+    void unionSets(const Key& first, const Key& second);
   };
 
   template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::DSU::findRoot(Node* node) -> Node*
+  Graph< Key, Hash, KeyEqual >::DSU::DSU(const Graph& graph)
   {
-    if (parent[node] != node)
+    for (const auto& pair: graph.graph_)
     {
-      parent[node] = findRoot(parent[node]);
+      const Key& key = pair.first;
+      parent.emplace(key, key);
+      rank.emplace(key, 0);
     }
-    return parent[node];
   }
 
   template< class Key, class Hash, class KeyEqual >
-  void Graph< Key, Hash, KeyEqual >::DSU::unionSets(Node* first, Node* second)
+  Key Graph< Key, Hash, KeyEqual >::DSU::findRoot(const Key& key)
   {
-    first = findRoot(first);
-    second = findRoot(second);
-    if (first == second)
+    if (parent[key] != key)
+    {
+      parent[key] = findRoot(parent[key]);
+    }
+    return parent[key];
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  void Graph< Key, Hash, KeyEqual >::DSU::unionSets(const Key& first, const Key& second)
+  {
+    Key rootFirst = findRoot(first);
+    Key rootSecond = findRoot(second);
+    if (KeyEqual{}(rootFirst, rootSecond))
     {
       return;
     }
-    if (rank[first] < rank[second])
+    if (rank[rootFirst] < rank[rootSecond])
     {
-      parent[first] = second;
+      parent[rootFirst] = rootSecond;
     }
     else
     {
-      parent[second] = first;
-      if (rank[first] == rank[second])
+      parent[rootSecond] = rootFirst;
+      if (rank[rootFirst] == rank[rootSecond])
       {
-        ++rank[first];
+        ++rank[rootFirst];
       }
     }
   }
 
   template< class Key, class Hash, class KeyEqual >
-  bool Graph< Key, Hash, KeyEqual >::edgeLess::operator()(const Edge& lhs, const Edge& rhs) const
+  struct Graph< Key, Hash, KeyEqual >::Edge
   {
-    return lhs.first < rhs.first;
+    Key from_;
+    Key to_;
+    double weight_;
+
+    Edge(Key from, Key to, double weight);
+    bool operator<(const Edge& rhs) const;
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  Graph< Key, Hash, KeyEqual >::Edge::Edge(Key from, Key to, double weight):
+    from_(from),
+    to_(to),
+    weight_(weight)
+  {}
+
+  template< class Key, class Hash, class KeyEqual >
+  bool Graph< Key, Hash, KeyEqual >::Edge::operator<(const Edge& rhs) const
+  {
+    return weight_ < rhs.weight_;
   }
 
   template< class Key, class Hash, class KeyEqual >
   auto Graph< Key, Hash, KeyEqual >::collectEdges() const -> std::vector< Edge >
   {
     std::vector< Edge > edges;
-    edges.reserve(nodes_.size() * 2);
-    for (const auto& pair: nodes_)
+    edges.reserve(graph_.size() * 2);
+    for (const auto& pair: graph_)
     {
-      Node* from = pair.second.get();
-      for (const auto& connection: from->connections_)
+      const Key& from = pair.first;
+      for (const auto& connection: pair.second)
       {
-        Node* to = connection.second.target_;
+        const Key& to = connection.first;
         if (from < to)
         {
-          edges.emplace_back(connection.second.weight_, std::make_pair(from, to));
+          edges.emplace_back(from, to, connection.second);
         }
       }
     }
-    std::sort(edges.begin(), edges.end(), edgeLess{});
+    std::sort(edges.begin(), edges.end());
     return edges;
-  }
-
-  template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::makeUnrelatedDSU() const -> DSU
-  {
-    DSU dsu;
-    for (const auto& pair: nodes_)
-    {
-      Node* node = pair.second.get();
-      dsu.parent.emplace(node, node);
-      dsu.rank.emplace(node, 0);
-    }
-    return dsu;
   }
 
   template< class Key, class Hash, class KeyEqual >
   void Graph< Key, Hash, KeyEqual >::removeCycles()
   {
-    if (nodes_.empty())
+    if (graph_.size() <= 2)
     {
       return;
     }
     auto edges = collectEdges();
-    auto dsu = makeUnrelatedDSU();
+    DSU dsu(*this);
     for (const auto& edge: edges)
     {
-      Node* from = edge.second.first;
-      Node* to = edge.second.second;
+      const Key& from = edge.from_;
+      const Key& to = edge.to_;
+
       if (dsu.findRoot(from) != dsu.findRoot(to))
       {
         dsu.unionSets(from, to);
       }
       else
       {
-        removeLink(from->data_, to->data_);
+        removeLink(from, to);
       }
     }
   }
 
   template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::path(std::size_t top) const -> std::vector< Way >
+  struct Graph< Key, Hash, KeyEqual >::Way
   {
+    std::vector< Key > steps_;
+    std::size_t length_{ 0 };
+
+    bool operator>(const Way& rhs) const;
+    bool operator==(const Way& rhs) const;
+    bool operator!=(const Way& rhs) const;
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  bool Graph< Key, Hash, KeyEqual >::Way::operator>(const Way& rhs) const
+  {
+    return length_ > rhs.length_;
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  bool Graph< Key, Hash, KeyEqual >::Way::operator==(const Way& rhs) const
+  {
+    if (steps_.size() != rhs.steps_.size())
+    {
+      return false;
+    }
+    KeyEqual equal;
+    for (std::size_t i = 0; i < steps_.size(); ++i)
+    {
+      if (!equal(steps_[i], rhs.steps_[i]))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  bool Graph< Key, Hash, KeyEqual >::Way::operator!=(const Way& rhs) const
+  {
+    return !(*this == rhs);
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  class Graph< Key, Hash, KeyEqual >::DijkstraPathFinder
+  {
+  public:
+    DijkstraPathFinder(const Graph& graph, const Key& start, const Key& end);
+    Way operator()();
+
+  private:
+    const Key& start_;
+    const Key& end_;
+    const Graph& graph_;
+    std::unordered_map< Key, std::size_t > distances_;
+    std::unordered_map< Key, std::pair< Key, std::size_t > > previous_;
+    using Distances = std::pair< std::size_t, Key >;
+    std::priority_queue< Distances, std::vector< Distances >, std::greater< Distances > > queue_;
+
+    void pushNeighbors(const Key& key);
+    Way constructPath();
+    Way releasePath();
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  Graph< Key, Hash, KeyEqual >::DijkstraPathFinder::DijkstraPathFinder(const Graph& graph, const Key& start,
+                                                                       const Key& end):
+    start_(start),
+    end_(end),
+    graph_(graph)
+  {
+    for (const auto& pair: graph.graph_)
+    {
+      distances_[pair.first] = std::numeric_limits< std::size_t >::max();
+    }
+    distances_[start] = 0;
+    queue_.emplace(0, start);
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  auto Graph< Key, Hash, KeyEqual >::DijkstraPathFinder::operator()() -> Way
+  {
+    return constructPath();
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  void Graph< Key, Hash, KeyEqual >::DijkstraPathFinder::pushNeighbors(const Key& key)
+  {
+    for (const auto& cnt: graph_.graph_.at(key))
+    {
+      auto neighbor = cnt.first;
+      auto weight = cnt.second;
+      auto newDistance = distances_[key] + weight;
+      if (newDistance < distances_[neighbor])
+      {
+        distances_[neighbor] = newDistance;
+        previous_[neighbor] = { key, weight };
+        queue_.emplace(newDistance, neighbor);
+      }
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  auto Graph< Key, Hash, KeyEqual >::DijkstraPathFinder::constructPath() -> Way
+  {
+    while (!queue_.empty())
+    {
+      auto current = queue_.top();
+      queue_.pop();
+      auto currentDistance = current.first;
+      auto currentKey = current.second;
+      if (currentDistance > distances_[currentKey])
+      {
+        continue;
+      }
+      if (currentKey == end_)
+      {
+        break;
+      }
+      pushNeighbors(currentKey);
+    }
+    return releasePath();
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  auto Graph< Key, Hash, KeyEqual >::DijkstraPathFinder::releasePath() -> Way
+  {
+    if (distances_[end_] == std::numeric_limits< std::size_t >::max())
+    {
+      return {};
+    }
+    Way path;
+    Key current = end_;
+    while (current != start_)
+    {
+      auto prevStep = previous_[current];
+      auto prev = prevStep.first;
+      auto weight = prevStep.second;
+      path.steps_.push_back(current);
+      path.length_ += weight;
+      current = prev;
+    }
+    path.steps_.push_back(start_);
+    std::reverse(path.steps_.begin(), path.steps_.end());
+    return path;
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  auto Graph< Key, Hash, KeyEqual >::path(const Key& start, const Key& end) const -> Way
+  {
+    if (!contains(start) || !contains(end))
+    {
+      throw std::invalid_argument("Key not found");
+    }
+    return DijkstraPathFinder{ *this, start, end }();
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  template< bool AllowCycles >
+  class Graph< Key, Hash, KeyEqual >::NPathsFinder
+  {
+  public:
+    NPathsFinder(const Graph& graph, const Key& start, const Key& end);
+    std::vector< Way > operator()(std::size_t k);
+
+  private:
+    const Graph& graph_;
+    const Key& start_;
+    const Key& end_;
     std::vector< Way > result;
+    std::priority_queue< Way, std::vector< Way >, std::greater< Way > > candidates;
+    std::unordered_set< std::vector< Key >, VectorHash< Key, Hash > > visited;
+
+    void finishWayProcessing(const Way& current);
+    template< bool AC = AllowCycles >
+    std::enable_if_t< !AC >
+    connectNeighbor(const Way& current, const Key& neighbor, std::size_t weight);
+    template< bool AC = AllowCycles >
+    std::enable_if_t< AC >
+    connectNeighbor(const Way& current, const Key& neighbor, std::size_t weight);
+    void processNextPath();
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  template< bool AllowCycles >
+  Graph< Key, Hash, KeyEqual >::NPathsFinder< AllowCycles >::NPathsFinder(const Graph& graph,
+                                                                          const Key& start, const Key& end):
+    graph_(graph),
+    start_(start),
+    end_(end)
+  {
+    Way initialPath;
+    initialPath.steps_.push_back(start_);
+    initialPath.length_ = 0;
+    candidates.push(initialPath);
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  template< bool AllowCycles >
+  auto Graph< Key, Hash, KeyEqual >::NPathsFinder< AllowCycles >::operator()(std::size_t k) -> std::vector< Way >
+  {
+    if (!graph_.contains(start_) || !graph_.contains(end_))
+    {
+      throw std::invalid_argument("Key not found");
+    }
+    while (!candidates.empty() && result.size() < k)
+    {
+      processNextPath();
+    }
     return result;
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  template< bool AllowCycles >
+  void Graph< Key, Hash, KeyEqual >::NPathsFinder< AllowCycles >::finishWayProcessing(const Way& current)
+  {
+    if (visited.find(current.steps_) == visited.end())
+    {
+      result.push_back(current);
+      visited.insert(current.steps_);
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  template< bool AllowCycles >
+  template< bool AC >
+  std::enable_if_t< !AC >
+  Graph< Key, Hash, KeyEqual >::NPathsFinder< AllowCycles >::connectNeighbor(const Way& current,
+                                                                             const Key& neighbor, std::size_t weight)
+  {
+    if (std::find(current.steps_.begin(), current.steps_.end(), neighbor) == current.steps_.end())
+    {
+      connectNeighbor< true >(current, neighbor, weight);
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  template< bool AllowCycles >
+  template< bool AC >
+  std::enable_if_t< AC >
+  Graph< Key, Hash, KeyEqual >::NPathsFinder< AllowCycles >::connectNeighbor(const Way& current,
+                                                                             const Key& neighbor, std::size_t weight)
+  {
+    Way newPath = current;
+    newPath.steps_.push_back(neighbor);
+    newPath.length_ += weight;
+    if (visited.find(newPath.steps_) == visited.end())
+    {
+      candidates.push(newPath);
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  template< bool AllowCycles >
+  void Graph< Key, Hash, KeyEqual >::NPathsFinder< AllowCycles >::processNextPath()
+  {
+    Way current = candidates.top();
+    candidates.pop();
+    Key lastKey = current.steps_.back();
+    if (lastKey == end_)
+    {
+      finishWayProcessing(current);
+      return;
+    }
+    for (const auto& neighbor: graph_.graph_.at(lastKey))
+    {
+      connectNeighbor< >(current, neighbor.first, neighbor.second);
+    }
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  auto Graph< Key, Hash, KeyEqual >::nPaths(const Key& start, const Key& end, std::size_t k) const -> std::vector< Way >
+  {
+    return NPathsFinder< true >{ *this, start, end }(k);
+  }
+
+  template< class Key, class Hash, class KeyEqual >
+  auto Graph< Key, Hash, KeyEqual >::nPathsNoCycles(const Key& start, const Key& end,
+                                                    std::size_t k) const -> std::vector< Way >
+  {
+    return NPathsFinder< false >{ *this, start, end }(k);
   }
 }
 #endif
