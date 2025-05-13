@@ -4,6 +4,7 @@
 #include <iterator>
 #include <stdexcept>
 #include "fwd_list.h"
+#include "unique_ptr.h"
 
 namespace ohantsev
 {
