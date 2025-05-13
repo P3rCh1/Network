@@ -201,14 +201,14 @@ namespace ohantsev
   {
     Key from_;
     Key to_;
-    double weight_;
+    std::size_t weight_;
 
-    Edge(Key from, Key to, double weight);
+    Edge(Key from, Key to, std::size_t weight);
     bool operator<(const Edge& rhs) const;
   };
 
   template< class Key, class Hash, class KeyEqual >
-  Graph< Key, Hash, KeyEqual >::Edge::Edge(Key from, Key to, double weight):
+  Graph< Key, Hash, KeyEqual >::Edge::Edge(Key from, Key to, std::size_t weight):
     from_(from),
     to_(to),
     weight_(weight)
@@ -244,7 +244,7 @@ namespace ohantsev
   template< class Key, class Hash, class KeyEqual >
   void Graph< Key, Hash, KeyEqual >::removeCycles()
   {
-    if (graph_.size() <= 2)
+    if (graph_.size() < 3)
     {
       return;
     }
@@ -319,7 +319,8 @@ namespace ohantsev
     const Key& end_;
     const Graph& graph_;
     HashMap< Key, std::size_t > distances_;
-    HashMap< Key, std::pair< Key, std::size_t > > previous_;
+    using Step = std::pair< Key, std::size_t >;
+    HashMap< Key, Step > previous_;
     using Distances = std::pair< std::size_t, Key >;
     std::priority_queue< Distances, std::vector< Distances >, std::greater< Distances > > queue_;
 
@@ -354,7 +355,7 @@ namespace ohantsev
   {
     for (const auto& cnt: graph_.graph_.at(key))
     {
-      auto neighbor = cnt.first;
+      const Key& neighbor = cnt.first;
       auto weight = cnt.second;
       auto newDistance = distances_[key] + weight;
       if (newDistance < distances_[neighbor])
@@ -374,7 +375,7 @@ namespace ohantsev
       auto current = queue_.top();
       queue_.pop();
       auto currentDistance = current.first;
-      auto currentKey = current.second;
+      const Key& currentKey = current.second;
       if (currentDistance > distances_[currentKey])
       {
         continue;
@@ -399,8 +400,8 @@ namespace ohantsev
     Key current = end_;
     while (current != start_)
     {
-      auto prevStep = previous_[current];
-      auto prev = prevStep.first;
+      const auto& prevStep = previous_[current];
+      const Key& prev = prevStep.first;
       auto weight = prevStep.second;
       path.steps_.push_back(current);
       path.length_ += weight;
