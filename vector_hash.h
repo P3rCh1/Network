@@ -5,10 +5,10 @@
 template< typename T, typename Hash >
 struct VectorHash
 {
-  size_t operator()(const std::vector< T >& vec) const
+  std::size_t operator()(const std::vector< T >& vec) const
   {
     Hash hasher;
-    size_t seed = vec.size();
+    std::size_t seed = vec.size();
     for (const auto& elem: vec)
     {
       seed ^= hasher(elem) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
