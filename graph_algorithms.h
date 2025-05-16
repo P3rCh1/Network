@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <unordered_set>
-#include "hash_map.h"
+#include <hash_map>
 #include "vector_hash.h"
 
 namespace ohantsev
@@ -84,7 +84,7 @@ namespace ohantsev
   template< class Key, class Hash, class KeyEqual >
   bool Graph< Key, Hash, KeyEqual >::link(const Key& from, const Key& to, std::size_t weight)
   {
-    if (from == to || weight == 0 || !contains(from) || !contains(to))
+    if (from == to || weight == 0)
     {
       return false;
     }
@@ -125,6 +125,15 @@ namespace ohantsev
   template< class Key, class Hash, class KeyEqual >
   bool Graph< Key, Hash, KeyEqual >::removeForce(const Key& key)
   {
+    auto iter = graph_.find(key);
+    if (iter == graph_.end())
+    {
+      return false;
+    }
+    for (auto& cnt: iter->second)
+    {
+      graph_.at(cnt.first).erase(key);
+    }
     return graph_.erase(key);
   }
 
