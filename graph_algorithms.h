@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <unordered_set>
-#include <hash_map>
+#include "hash_map.h"
 #include "vector_hash.h"
 
 namespace ohantsev

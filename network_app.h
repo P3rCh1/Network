@@ -2,17 +2,17 @@
 #define NETWORK_H
 #include <string>
 #include <iosfwd>
-#include <unordered_map>
-#include "command_handler.h"
 #include "graph.h"
+#include "hash_map.h"
+#include "command_handler.h"
 
 namespace ohantsev
 {
-  class NetworkApp: public CommandHandler< std::unordered_map< std::string, Graph< std::string > > >
+  class NetworkApp: public CommandHandler< HashMap< std::string, Graph< std::string > > >
   {
   public:
     using graph_type = Graph< std::string >;
-    using map_type = std::unordered_map< std::string, graph_type >;
+    using map_type = HashMap< std::string, graph_type >;
     NetworkApp(map_type& networks, std::istream& in, std::ostream& out);
     void operator()() override;
     void input(std::string filename);

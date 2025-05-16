@@ -1,18 +1,19 @@
 #include <iostream>
-#include <unordered_map>
+#include "hash_map.h"
 #include "network_app.h"
 
 int main(int argc, char** argv)
 {
   using ohantsev::NetworkApp;
+  using ohantsev::HashMap;
   using ohantsev::Graph;
 
-  if (argc != 2)
+  if (argc < 2)
   {
-    std::cout << "file not found\n";
+    std::cout << "Empty filename\n";
     return 1;
   }
-  std::unordered_map< std::string, Graph< std::string > > networks;
+  HashMap< std::string, Graph< std::string > > networks;
   NetworkApp app(networks, std::cin, std::cout);
   try
   {
