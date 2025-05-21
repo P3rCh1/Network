@@ -1,6 +1,6 @@
 #include <iostream>
-#include <unordered_map>
-#include "network_app.h"
+#include "hash_map.h"
+#include "network_app_algorithm.h"
 
 int main(int argc, char** argv)
 {
@@ -12,7 +12,7 @@ int main(int argc, char** argv)
     std::cout << "Empty filename\n";
     return 1;
   }
-  std::unordered_map< std::string, Graph< std::string > > networks;
+  ohantsev::HashMap< std::string, Graph< std::string > > networks;
   NetworkApp app(networks, std::cin, std::cout);
   try
   {
