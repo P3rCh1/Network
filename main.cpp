@@ -1,11 +1,10 @@
 #include <iostream>
-#include "hash_map.h"
+#include <unordered_map>
 #include "network_app.h"
 
 int main(int argc, char** argv)
 {
   using ohantsev::NetworkApp;
-  using ohantsev::HashMap;
   using ohantsev::Graph;
 
   if (argc < 2)
@@ -13,7 +12,7 @@ int main(int argc, char** argv)
     std::cout << "Empty filename\n";
     return 1;
   }
-  HashMap< std::string, Graph< std::string > > networks;
+  std::unordered_map< std::string, Graph< std::string > > networks;
   NetworkApp app(networks, std::cin, std::cout);
   try
   {

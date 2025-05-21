@@ -5,4 +5,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(Network main.cpp graph.h hash_map.h fwd_list.h vector_hash.h network_app.h network_app.cpp)
+add_executable(Network main.cpp graph.h hash_map.h fwd_list.h vector_hash.h
+        network_app.h
+        network_app.cpp)

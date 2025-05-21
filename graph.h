@@ -55,6 +55,11 @@ namespace ohantsev
     class NPathsFinder;
 
     std::vector< Edge > collectEdges() const;
+
+    struct EdgeCollector;
+    struct ConnectionProcessor;
+    struct EdgeProcessor;
+    struct ConnectionRemover;
   };
 
   template< class Key, class Hash, class KeyEqual >
@@ -123,6 +128,18 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::ConnectionRemover
+  {
+    Graph& graph;
+    const Key& toRemove;
+
+    void operator()(const typename ConnectionMap::value_type& cnt)
+    {
+      graph.graph_.at(cnt.first).erase(toRemove);
+    }
+  };
+
+  template< class Key, class Hash, class KeyEqual >
   bool Graph< Key, Hash, KeyEqual >::removeForce(const Key& key)
   {
     auto iter = graph_.find(key);
@@ -130,10 +147,8 @@ namespace ohantsev
     {
       return false;
     }
-    for (auto& cnt: iter->second)
-    {
-      graph_.at(cnt.first).erase(key);
-    }
+    auto& cnts = iter->second;
+    std::for_each(cnts.begin(), cnts.end(), ConnectionRemover{ *this, key });
     return graph_.erase(key);
   }
 
@@ -159,17 +174,27 @@ namespace ohantsev
     explicit DSU(const Graph& graph);
     Key findRoot(const Key& key);
     void unionSets(const Key& first, const Key& second);
+
+    struct Initializer;
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::DSU::Initializer
+  {
+    DSU& dsu;
+
+    void operator()(const typename GraphMap::value_type& pair)
+    {
+      const Key& key = pair.first;
+      dsu.parent.emplace(key, key);
+      dsu.rank.emplace(key, 0);
+    }
   };
 
   template< class Key, class Hash, class KeyEqual >
   Graph< Key, Hash, KeyEqual >::DSU::DSU(const Graph& graph)
   {
-    for (const auto& pair: graph.graph_)
-    {
-      const Key& key = pair.first;
-      parent.emplace(key, key);
-      rank.emplace(key, 0);
-    }
+    std::for_each(graph.graph_.begin(), graph.graph_.end(), Initializer{ *this });
   }
 
   template< class Key, class Hash, class KeyEqual >
@@ -230,25 +255,63 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::ConnectionProcessor
+  {
+    std::vector< Edge >& edges;
+    const Key& from;
+
+    void operator()(const typename ConnectionMap::value_type& connection)
+    {
+      const Key& to = connection.first;
+      if (from < to)
+      {
+        edges.emplace_back(from, to, connection.second);
+      }
+    }
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::EdgeCollector
+  {
+    std::vector< Edge >& edges;
+
+    void operator()(const typename GraphMap::value_type& pair)
+    {
+      const Key& from = pair.first;
+      std::for_each(pair.second.begin(), pair.second.end(), ConnectionProcessor{ edges, from });
+    }
+  };
+
+  template< class Key, class Hash, class KeyEqual >
   auto Graph< Key, Hash, KeyEqual >::collectEdges() const -> std::vector< Edge >
   {
     std::vector< Edge > edges;
     edges.reserve(graph_.size() * 2);
-    for (const auto& pair: graph_)
-    {
-      const Key& from = pair.first;
-      for (const auto& connection: pair.second)
-      {
-        const Key& to = connection.first;
-        if (from < to)
-        {
-          edges.emplace_back(from, to, connection.second);
-        }
-      }
-    }
+    std::for_each(graph_.begin(), graph_.end(), EdgeCollector{ edges });
     std::sort(edges.begin(), edges.end());
     return edges;
   }
+
+  template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::EdgeProcessor
+  {
+    DSU& dsu;
+    Graph& graph;
+
+    void operator()(const Edge& edge)
+    {
+      const Key& from = edge.from_;
+      const Key& to = edge.to_;
+      if (dsu.findRoot(from) != dsu.findRoot(to))
+      {
+        dsu.unionSets(from, to);
+      }
+      else
+      {
+        graph.removeLink(from, to);
+      }
+    }
+  };
 
   template< class Key, class Hash, class KeyEqual >
   void Graph< Key, Hash, KeyEqual >::removeCycles()
@@ -259,20 +322,7 @@ namespace ohantsev
     }
     auto edges = collectEdges();
     DSU dsu(*this);
-    for (const auto& edge: edges)
-    {
-      const Key& from = edge.from_;
-      const Key& to = edge.to_;
-
-      if (dsu.findRoot(from) != dsu.findRoot(to))
-      {
-        dsu.unionSets(from, to);
-      }
-      else
-      {
-        removeLink(from, to);
-      }
-    }
+    std::for_each(edges.begin(), edges.end(), EdgeProcessor{ dsu, *this });
   }
 
   template< class Key, class Hash, class KeyEqual >
@@ -299,15 +349,7 @@ namespace ohantsev
     {
       return false;
     }
-    KeyEqual equal;
-    for (std::size_t i = 0; i < steps_.size(); ++i)
-    {
-      if (!equal(steps_[i], rhs.steps_[i]))
-      {
-        return false;
-      }
-    }
-    return true;
+    return std::equal(steps_.begin(), steps_.end(), rhs.steps_.begin(), KeyEqual{});
   }
 
   template< class Key, class Hash, class KeyEqual >
@@ -336,6 +378,20 @@ namespace ohantsev
     void pushNeighbors(const Key& key);
     Way constructPath();
     Way releasePath();
+
+    struct DistanceInitializer;
+    struct NeighborProcessor;
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  struct Graph< Key, Hash, KeyEqual >::DijkstraPathFinder::DistanceInitializer
+  {
+    std::unordered_map< Key, std::size_t >& distances;
+
+    void operator()(const typename GraphMap::value_type& pair)
+    {
+      distances[pair.first] = std::numeric_limits< std::size_t >::max();
+    }
   };
 
   template< class Key, class Hash, class KeyEqual >
@@ -345,10 +401,7 @@ namespace ohantsev
     end_(end),
     graph_(graph)
   {
-    for (const auto& pair: graph.graph_)
-    {
-      distances_[pair.first] = std::numeric_limits< std::size_t >::max();
-    }
+    std::for_each(graph.graph_.begin(), graph.graph_.end(), DistanceInitializer{ distances_ });
     distances_[start] = 0;
     queue_.emplace(0, start);
   }
@@ -360,20 +413,32 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
-  void Graph< Key, Hash, KeyEqual >::DijkstraPathFinder::pushNeighbors(const Key& key)
+  struct Graph< Key, Hash, KeyEqual >::DijkstraPathFinder::NeighborProcessor
   {
-    for (const auto& cnt: graph_.graph_.at(key))
+    DijkstraPathFinder& finder;
+    const Key& currentKey;
+    std::size_t currentDistance;
+
+    void operator()(const typename ConnectionMap::value_type& cnt)
     {
       const Key& neighbor = cnt.first;
       auto weight = cnt.second;
-      auto newDistance = distances_[key] + weight;
-      if (newDistance < distances_[neighbor])
+      auto newDistance = currentDistance + weight;
+
+      if (newDistance < finder.distances_[neighbor])
       {
-        distances_[neighbor] = newDistance;
-        previous_[neighbor] = { key, weight };
-        queue_.emplace(newDistance, neighbor);
+        finder.distances_[neighbor] = newDistance;
+        finder.previous_[neighbor] = { currentKey, weight };
+        finder.queue_.emplace(newDistance, neighbor);
       }
     }
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  void Graph< Key, Hash, KeyEqual >::DijkstraPathFinder::pushNeighbors(const Key& key)
+  {
+    const auto& connections = graph_.graph_.at(key);
+    std::for_each(connections.begin(), connections.end(), NeighborProcessor{ *this, key, distances_[key] });
   }
 
   template< class Key, class Hash, class KeyEqual >
@@ -455,6 +520,8 @@ namespace ohantsev
     std::enable_if_t< AC >
     connectNeighbor(const Way& current, const Key& neighbor, std::size_t weight);
     void processNextPath();
+
+    struct NeighborConnector;
   };
 
   template< class Key, class Hash, class KeyEqual >
@@ -528,6 +595,19 @@ namespace ohantsev
 
   template< class Key, class Hash, class KeyEqual >
   template< bool AllowCycles >
+  struct Graph< Key, Hash, KeyEqual >::NPathsFinder< AllowCycles >::NeighborConnector
+  {
+    NPathsFinder& finder;
+    const Way& current;
+
+    void operator()(const typename ConnectionMap::value_type& neighbor)
+    {
+      finder.connectNeighbor< AllowCycles >(current, neighbor.first, neighbor.second);
+    }
+  };
+
+  template< class Key, class Hash, class KeyEqual >
+  template< bool AllowCycles >
   void Graph< Key, Hash, KeyEqual >::NPathsFinder< AllowCycles >::processNextPath()
   {
     Way current = candidates.top();
@@ -538,10 +618,8 @@ namespace ohantsev
       finishWayProcessing(current);
       return;
     }
-    for (const auto& neighbor: graph_.graph_.at(lastKey))
-    {
-      connectNeighbor< >(current, neighbor.first, neighbor.second);
-    }
+    const auto& neighbors = graph_.graph_.at(lastKey);
+    std::for_each(neighbors.begin(), neighbors.end(), NeighborConnector{ *this, current });
   }
 
   template< class Key, class Hash, class KeyEqual >
