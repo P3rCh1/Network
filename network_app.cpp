@@ -273,9 +273,9 @@ void ohantsev::NetworkApp::removeLoopsNew(map_type& networks, std::istream& in)
     {
       throw std::invalid_argument("Network " + newNet + " already exists");
     }
-    networks.emplace(newNet, graph_type(iter->second));
-    auto& network = networks.at(newNet);
-    network.removeCycles();
+    graph_type networkGraph(iter->second);
+    networkGraph.removeCycles();
+    networks.emplace(newNet, std::move(networkGraph));
   }
 }
 
@@ -409,10 +409,10 @@ void ohantsev::NetworkApp::merge(map_type& networks, std::istream& in)
     {
       throw std::invalid_argument("Network " + dest + " already exists");
     }
-    iterDest = networks.emplace(dest, graph_type(iterFirst->second)).first;
-    auto& destNet = iterDest->second;
-    auto& secondNetMap = iterSecond->second.watch();
+    graph_type destNet = (iterFirst->second);
+    auto& secondNetMap =  iterSecond->second.watch();
     std::for_each(secondNetMap.begin(), secondNetMap.end(), NetworkMerger{ destNet });
+    networks.emplace(dest, std::move(destNet));
   }
 }
 
