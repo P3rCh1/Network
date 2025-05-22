@@ -33,24 +33,25 @@ namespace ohantsev
     static void removeLoops(map_type& networks, std::istream& in);
     static void removeLoopsNew(map_type& networks, std::istream& in);
     static void distance(const map_type& networks, std::istream& in, std::ostream& out);
+    template < bool AllowCycles >
     static void topPaths(const map_type& networks, std::istream& in, std::ostream& out);
+    static void topPathsWithCycles(const map_type& networks, std::istream& in, std::ostream& out);
     static void topPathsNoCycles(const map_type& networks, std::istream& in, std::ostream& out);
     static void merge(map_type& networks, std::istream& in);
     static void save(const map_type& networks, std::istream& in);
 
     static std::string getName(const map_type::value_type& pair);
 
-    struct PrintWay;
-    struct PrintWays;
-    struct PrintDeviceConnections;
-    struct PrintConnection;
-    struct PrintWayStep;
+    struct WayPrinter;
+    struct DeviceConnectionsPrinter;
+    struct ConnectionPrinter;
+    struct StepPrinter;
     struct ConnectionAdder;
     struct NetworkMerger;
     struct NetworkSaver;
     struct ConnectionSaver;
     struct DeviceSaver;
-    struct CntSizeAdder;
+    struct ConnectionCounter;
   };
 
   std::istream& operator>>(std::istream& in, Graph< std::string >& graph);

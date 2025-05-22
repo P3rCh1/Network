@@ -20,6 +20,7 @@ namespace ohantsev
     using this_t = Graph;
     using ConnectionMap = HashMap< Key, std::size_t, Hash, KeyEqual >;
     using GraphMap = HashMap< Key, ConnectionMap >;
+
     struct Way;
 
     explicit Graph(std::size_t capacity = 10);
@@ -41,8 +42,8 @@ namespace ohantsev
     bool removeLink(const Key& first, const Key& second);
     void removeCycles();
     Way path(const Key& start, const Key& end) const;
+    template< bool AllowCycles >
     std::vector< Way > nPaths(const Key& start, const Key& end, std::size_t k) const;
-    std::vector< Way > nPathsNoCycles(const Key& start, const Key& end, std::size_t k) const;
 
   private:
     GraphMap graph_;
@@ -281,19 +282,19 @@ namespace ohantsev
     std::vector< Key > steps_;
     std::size_t length_{ 0 };
 
-    bool operator>(const Way& rhs) const;
-    bool operator==(const Way& rhs) const;
-    bool operator!=(const Way& rhs) const;
+    bool operator>(const Way& rhs) const noexcept;
+    bool operator==(const Way& rhs) const noexcept;
+    bool operator!=(const Way& rhs) const noexcept;
   };
 
   template< class Key, class Hash, class KeyEqual >
-  bool Graph< Key, Hash, KeyEqual >::Way::operator>(const Way& rhs) const
+  bool Graph< Key, Hash, KeyEqual >::Way::operator>(const Way& rhs) const noexcept
   {
     return length_ > rhs.length_;
   }
 
   template< class Key, class Hash, class KeyEqual >
-  bool Graph< Key, Hash, KeyEqual >::Way::operator==(const Way& rhs) const
+  bool Graph< Key, Hash, KeyEqual >::Way::operator==(const Way& rhs) const noexcept
   {
     if (steps_.size() != rhs.steps_.size())
     {
@@ -311,7 +312,7 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
-  bool Graph< Key, Hash, KeyEqual >::Way::operator!=(const Way& rhs) const
+  bool Graph< Key, Hash, KeyEqual >::Way::operator!=(const Way& rhs) const noexcept
   {
     return !(*this == rhs);
   }
@@ -545,16 +546,10 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
+  template< bool AllowCycles >
   auto Graph< Key, Hash, KeyEqual >::nPaths(const Key& start, const Key& end, std::size_t k) const -> std::vector< Way >
   {
-    return NPathsFinder< true >{ *this, start, end }(k);
-  }
-
-  template< class Key, class Hash, class KeyEqual >
-  auto Graph< Key, Hash, KeyEqual >::nPathsNoCycles(const Key& start, const Key& end,
-                                                    std::size_t k) const -> std::vector< Way >
-  {
-    return NPathsFinder< false >{ *this, start, end }(k);
+    return NPathsFinder< AllowCycles >{ *this, start, end }(k);
   }
 }
 #endif

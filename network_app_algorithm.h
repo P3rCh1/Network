@@ -31,15 +31,21 @@ namespace ohantsev
     static void removeLoops(map_type& networks, std::istream& in);
     static void removeLoopsNew(map_type& networks, std::istream& in);
     static void distance(const map_type& networks, std::istream& in, std::ostream& out);
+    template < bool AllowCycles >
     static void topPaths(const map_type& networks, std::istream& in, std::ostream& out);
+    static void topPathsWithCycles(const map_type& networks, std::istream& in, std::ostream& out);
     static void topPathsNoCycles(const map_type& networks, std::istream& in, std::ostream& out);
+    static void copyConnections(const graph_type& src, graph_type& dest);
     static void merge(map_type& networks, std::istream& in);
     static void save(const map_type& networks, std::istream& in);
 
+    static std::size_t countConnections(const graph_type::GraphMap& map);
+    static void saveGraph(const graph_type::GraphMap& map, std::ofstream& fout);
     static void printWay(const graph_type::Way& way, std::ostream& out);
     static void printWays(const std::vector< graph_type::Way >& ways, std::ostream& out);
   };
 
+  void readConnection(std::istream& in, Graph<std::string>& graph);
   std::istream& operator>>(std::istream& in, Graph< std::string >& graph);
 }
 #endif

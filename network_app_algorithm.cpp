@@ -18,7 +18,7 @@ ohantsev::NetworkApp::NetworkApp(map_type& networks, std::istream& in, std::ostr
   add("remove_loops", std::bind(removeLoops, std::ref(networks), std::ref(in)));
   add("remove_loops_new", std::bind(removeLoopsNew, std::ref(networks), std::ref(in)));
   add("distance", std::bind(distance, std::cref(networks), std::ref(in), std::ref(out)));
-  add("top_paths", std::bind(topPaths, std::cref(networks), std::ref(in), std::ref(out)));
+  add("top_paths", std::bind(topPathsWithCycles, std::cref(networks), std::ref(in), std::ref(out)));
   add("top_paths_nocycles", std::bind(topPathsNoCycles, std::cref(networks), std::ref(in), std::ref(out)));
   add("merge", std::bind(merge, std::ref(networks), std::ref(in)));
   add("save", std::bind(save, std::cref(networks), std::ref(in)));
@@ -33,54 +33,40 @@ void ohantsev::NetworkApp::operator()()
   }
   catch (std::invalid_argument& e)
   {
-    if (in_.eof())
+    if (!in_.eof())
     {
-      return;
+      out_ << e.what() << '\n';
     }
-    out_ << e.what() << '\n';
   }
   catch (std::exception& e)
   {
-    if (in_.eof())
+    if (!in_.eof())
     {
-      return;
+      out_ << "Invalid command" << '\n';
     }
-    out_ << "Invalid command" << '\n';
   }
   if (in_.fail())
   {
     in_.clear(in_.rdstate() ^ std::ios::failbit);
+    in_.ignore(std::numeric_limits< std::streamsize >::max(), '\n');
   }
-  in_.ignore(std::numeric_limits< std::streamsize >::max(), '\n');
 }
 
 void ohantsev::NetworkApp::create(map_type& networks, std::istream& in)
 {
   std::string name;
-  in >> name;
-  if (in)
+  if (in >> name && !(networks.emplace(name, graph_type{}).second))
   {
-    if (!(networks.emplace(name, graph_type{}).second))
-    {
-      throw std::invalid_argument("Network " + name + " already exists");
-    }
+    throw std::invalid_argument("Network " + name + " already exists");
   }
 }
 
 void ohantsev::NetworkApp::deleteNetwork(map_type& networks, std::istream& in)
 {
   std::string name;
-  in >> name;
-  if (!in)
+  if (in >> name && !networks.erase(name))
   {
-    throw std::invalid_argument("Invalid arguments");
-  }
-  if (in)
-  {
-    if (!networks.erase(name))
-    {
-      throw std::invalid_argument("Network " + name + " not found");
-    }
+    throw std::invalid_argument("Network " + name + " not found");
   }
 }
 
@@ -95,23 +81,21 @@ void ohantsev::NetworkApp::showAll(const map_type& networks, std::ostream& out)
 void ohantsev::NetworkApp::showNetwork(const map_type& networks, std::istream& in, std::ostream& out)
 {
   std::string name;
-  in >> name;
-  if (!in)
+  if (in >> name)
   {
-    throw std::invalid_argument("Invalid arguments");
-  }
-  auto iter = networks.find(name);
-  if (iter == networks.end())
-  {
-    throw std::invalid_argument("Network " + name + " not found");
-  }
-  const auto& network = iter->second.watch();
-  for (const auto& nodesPair: network)
-  {
-    out << "Device: " << nodesPair.first << '\n';
-    for (const auto& cntPair: nodesPair.second)
+    auto iter = networks.find(name);
+    if (iter == networks.end())
     {
-      out << " -> " << cntPair.first << " " << cntPair.second << '\n';
+      throw std::invalid_argument("Network " + name + " not found");
+    }
+    const auto& network = iter->second.watch();
+    for (const auto& nodesPair: network)
+    {
+      out << "Device: " << nodesPair.first << '\n';
+      for (const auto& cntPair: nodesPair.second)
+      {
+        out << " -> " << cntPair.first << " " << cntPair.second << '\n';
+      }
     }
   }
 }
@@ -120,20 +104,18 @@ void ohantsev::NetworkApp::addDevice(map_type& networks, std::istream& in)
 {
   std::string net;
   std::string device;
-  in >> net >> device;
-  if (!in)
+  if (in >> net >> device)
   {
-    throw std::invalid_argument("Invalid arguments");
-  }
-  auto iter = networks.find(net);
-  if (iter == networks.end())
-  {
-    throw std::invalid_argument("Network " + net + " not found");
-  }
-  auto& network = iter->second;
-  if (!network.insert(device))
-  {
-    throw std::invalid_argument("Device already exists");
+    auto iter = networks.find(net);
+    if (iter == networks.end())
+    {
+      throw std::invalid_argument("Network " + net + " not found");
+    }
+    auto& network = iter->second;
+    if (!network.insert(device))
+    {
+      throw std::invalid_argument("Device already exists");
+    }
   }
 }
 
@@ -143,8 +125,7 @@ void ohantsev::NetworkApp::connect(map_type& networks, std::istream& in)
   std::string from;
   std::string to;
   std::size_t weight;
-  in >> net >> from >> to >> weight;
-  if (!in)
+  if (!(in >> net >> from >> to >> weight))
   {
     throw std::invalid_argument("Invalid arguments");
   }
@@ -165,20 +146,18 @@ void ohantsev::NetworkApp::disconnect(map_type& networks, std::istream& in)
   std::string net;
   std::string from;
   std::string to;
-  in >> net >> from >> to;
-  if (!in)
+  if (in >> net >> from >> to)
   {
-    throw std::invalid_argument("Invalid arguments");
-  }
-  auto iter = networks.find(net);
-  if (iter == networks.end())
-  {
-    throw std::invalid_argument("Network " + net + " not found");
-  }
-  auto& network = iter->second;
-  if (!network.removeLink(from, to))
-  {
-    throw std::invalid_argument("Connection between " + from + "and" + to + " not found");
+    auto iter = networks.find(net);
+    if (iter == networks.end())
+    {
+      throw std::invalid_argument("Network " + net + " not found");
+    }
+    auto& network = iter->second;
+    if (!network.removeLink(from, to))
+    {
+      throw std::invalid_argument("Connection between " + from + "and" + to + " not found");
+    }
   }
 }
 
@@ -186,20 +165,23 @@ void ohantsev::NetworkApp::deleteDevice(map_type& networks, std::istream& in)
 {
   std::string net;
   std::string device;
-  in >> net >> device;
-  if (!in)
+  if (in >> net >> device)
   {
-    throw std::invalid_argument("Invalid arguments");
-  }
-  auto iter = networks.find(net);
-  if (iter == networks.end())
-  {
-    throw std::invalid_argument("Network " + net + " not found");
-  }
-  auto& network = iter->second;
-  if (!network.remove(device))
-  {
-    throw std::invalid_argument("Device " + device + " not found");
+    auto iter = networks.find(net);
+    if (iter == networks.end())
+    {
+      throw std::invalid_argument("Network " + net + " not found");
+    }
+    auto& network = iter->second;
+    if (!network.remove(device))
+    {
+      if (!network.contains(device))
+      {
+        throw std::invalid_argument("Device " + device + " not found");
+      }
+      throw std::invalid_argument("Device " + device +
+        " still connected\nUse force_delete_device to whatever remove with connections");
+    }
   }
 }
 
@@ -207,20 +189,18 @@ void ohantsev::NetworkApp::forceDeleteDevice(map_type& networks, std::istream& i
 {
   std::string net;
   std::string device;
-  in >> net >> device;
-  if (!in)
+  if (in >> net >> device)
   {
-    throw std::invalid_argument("Invalid arguments");
-  }
-  auto iter = networks.find(net);
-  if (iter == networks.end())
-  {
-    throw std::invalid_argument("Network " + net + " not found");
-  }
-  auto& network = iter->second;
-  if (!network.removeForce(device))
-  {
-    throw std::invalid_argument("Device " + device + " not found");
+    auto iter = networks.find(net);
+    if (iter == networks.end())
+    {
+      throw std::invalid_argument("Network " + net + " not found");
+    }
+    auto& network = iter->second;
+    if (!network.removeForce(device))
+    {
+      throw std::invalid_argument("Device " + device + " not found");
+    }
   }
 }
 
@@ -228,63 +208,57 @@ void ohantsev::NetworkApp::copy(map_type& networks, std::istream& in)
 {
   std::string source;
   std::string dest;
-  in >> source >> dest;
-  if (!in)
-  {
-    throw std::invalid_argument("Invalid arguments");
+  if (in >> source >> dest)
+    {
+    auto iterSource = networks.find(source);
+    if (iterSource == networks.end())
+    {
+      throw std::invalid_argument("Network " + source + " not found");
+    }
+    auto iterDest = networks.find(dest);
+    if (iterDest != networks.end())
+    {
+      throw std::invalid_argument("Network " + dest + " already exists");
+    }
+    networks.emplace(dest, graph_type(iterSource->second));
   }
-  auto iterSource = networks.find(source);
-  if (iterSource == networks.end())
-  {
-    throw std::invalid_argument("Network " + source + " not found");
-  }
-  auto iterDest = networks.find(dest);
-  if (iterDest != networks.end())
-  {
-    throw std::invalid_argument("Network " + dest + " already exists");
-  }
-  networks.emplace(dest, graph_type(iterSource->second));
 }
 
 void ohantsev::NetworkApp::removeLoops(map_type& networks, std::istream& in)
 {
   std::string net;
-  in >> net;
-  if (!in)
+  if (in >> net)
   {
-    throw std::invalid_argument("Invalid arguments");
+    auto iter = networks.find(net);
+    if (iter == networks.end())
+    {
+      throw std::invalid_argument("Network " + net + " not found");
+    }
+    auto& network = iter->second;
+    network.removeCycles();
   }
-  auto iter = networks.find(net);
-  if (iter == networks.end())
-  {
-    throw std::invalid_argument("Network " + net + " not found");
-  }
-  auto& network = iter->second;
-  network.removeCycles();
 }
 
 void ohantsev::NetworkApp::removeLoopsNew(map_type& networks, std::istream& in)
 {
   std::string net;
   std::string newNet;
-  in >> net >> newNet;
-  if (!in)
+  if (in >> net >> newNet)
   {
-    throw std::invalid_argument("Invalid arguments");
+    auto iter = networks.find(net);
+    if (iter == networks.end())
+    {
+      throw std::invalid_argument("Network " + net + " not found");
+    }
+    auto iterNew = networks.find(newNet);
+    if (iterNew != networks.end())
+    {
+      throw std::invalid_argument("Network " + newNet + " already exists");
+    }
+    networks.emplace(newNet, graph_type(iter->second));
+    auto& network = networks.at(newNet);
+    network.removeCycles();
   }
-  auto iter = networks.find(net);
-  if (iter == networks.end())
-  {
-    throw std::invalid_argument("Network " + net + " not found");
-  }
-  auto iterNew = networks.find(newNet);
-  if (iterNew != networks.end())
-  {
-    throw std::invalid_argument("Network " + newNet + " already exists");
-  }
-  networks.emplace(newNet, graph_type(iter->second));
-  auto& network = networks.at(newNet);
-  network.removeCycles();
 }
 
 void ohantsev::NetworkApp::distance(const map_type& networks, std::istream& in, std::ostream& out)
@@ -292,26 +266,24 @@ void ohantsev::NetworkApp::distance(const map_type& networks, std::istream& in, 
   std::string net;
   std::string from;
   std::string to;
-  in >> net >> from >> to;
-  if (!in)
+  if (in >> net >> from >> to)
   {
-    throw std::invalid_argument("Invalid arguments");
+    auto iter = networks.find(net);
+    if (iter == networks.end())
+    {
+      throw std::invalid_argument("Network " + net + " not found");
+    }
+    auto& network = iter->second;
+    if (!network.contains(from))
+    {
+      throw std::invalid_argument("Device " + from + " not found");
+    }
+    if (!network.contains(to))
+    {
+      throw std::invalid_argument("Device " + to + " not found");
+    }
+    out << iter->second.path(from, to).length_ << '\n';
   }
-  auto iter = networks.find(net);
-  if (iter == networks.end())
-  {
-    throw std::invalid_argument("Network " + net + " not found");
-  }
-  auto& network = iter->second;
-  if (!network.contains(from))
-  {
-    throw std::invalid_argument("Device " + from + " not found");
-  }
-  if (!network.contains(to))
-  {
-    throw std::invalid_argument("Device " + to + " not found");
-  }
-  out << iter->second.path(from, to).length_ << '\n';
 }
 
 void ohantsev::NetworkApp::printWay(const graph_type::Way& way, std::ostream& out)
@@ -333,14 +305,14 @@ void ohantsev::NetworkApp::printWays(const std::vector< graph_type::Way >& ways,
   }
 }
 
+template< bool AllowCycles >
 void ohantsev::NetworkApp::topPaths(const map_type& networks, std::istream& in, std::ostream& out)
 {
   std::string net;
   std::string from;
   std::string to;
   std::size_t count;
-  in >> net >> from >> to >> count;
-  if (!in)
+  if (!(in >> net >> from >> to >> count))
   {
     throw std::invalid_argument("Invalid arguments");
   }
@@ -358,35 +330,28 @@ void ohantsev::NetworkApp::topPaths(const map_type& networks, std::istream& in, 
   {
     throw std::invalid_argument("Device " + to + " not found");
   }
-  printWays(network.nPaths(from, to, count), out);
+  printWays(network.nPaths< AllowCycles >(from, to, count), out);
+}
+
+void ohantsev::NetworkApp::topPathsWithCycles(const map_type& networks, std::istream& in, std::ostream& out)
+{
+  topPaths< true >(networks, in, out);
 }
 
 void ohantsev::NetworkApp::topPathsNoCycles(const map_type& networks, std::istream& in, std::ostream& out)
 {
-  std::string net;
-  std::string from;
-  std::string to;
-  std::size_t count;
-  in >> net >> from >> to >> count;
-  if (!in)
+  topPaths< false >(networks, in, out);
+}
+
+void ohantsev::NetworkApp::copyConnections(const graph_type& src, graph_type& dest)
+{
+  for (const auto& device: src.watch())
   {
-    throw std::invalid_argument("Invalid arguments");
+    for (const auto& cnt: device.second)
+    {
+      dest.link(device.first, cnt.first, cnt.second);
+    }
   }
-  auto iter = networks.find(net);
-  if (iter == networks.end())
-  {
-    throw std::invalid_argument("Network " + net + " not found");
-  }
-  auto& network = iter->second;
-  if (!network.contains(from))
-  {
-    throw std::invalid_argument("Device " + from + " not found");
-  }
-  if (!network.contains(to))
-  {
-    throw std::invalid_argument("Device " + to + " not found");
-  }
-  printWays(network.nPathsNoCycles(from, to, count), out);
 }
 
 void ohantsev::NetworkApp::merge(map_type& networks, std::istream& in)
@@ -394,62 +359,64 @@ void ohantsev::NetworkApp::merge(map_type& networks, std::istream& in)
   std::string sourceFirst;
   std::string sourceSecond;
   std::string dest;
-  in >> sourceFirst >> sourceSecond >> dest;
-  if (!in)
+  if (in >> sourceFirst >> sourceSecond >> dest)
   {
-    throw std::invalid_argument("Invalid arguments");
-  }
-  auto iterFirst = networks.find(sourceFirst);
-  auto iterSecond = networks.find(sourceSecond);
-  if (iterFirst == networks.end())
-  {
-    throw std::invalid_argument("Network " + sourceFirst + " not found");
-  }
-  if (iterSecond == networks.end())
-  {
-    throw std::invalid_argument("Network " + sourceSecond + " not found");
-  }
-  auto iterDest = networks.find(dest);
-  if (iterDest != networks.end())
-  {
-    throw std::invalid_argument("Network " + dest + " already exists");
-  }
-  iterDest = networks.emplace(dest, graph_type(iterFirst->second)).first;
-  auto& destNet = iterDest->second;
-  for (const auto& device: iterSecond->second.watch())
-  {
-    for (const auto& cnt: device.second)
+    auto iterFirst = networks.find(sourceFirst);
+    auto iterSecond = networks.find(sourceSecond);
+    if (iterFirst == networks.end())
     {
-      destNet.link(device.first, cnt.first, cnt.second);
+      throw std::invalid_argument("Network " + sourceFirst + " not found");
+    }
+    if (iterSecond == networks.end())
+    {
+      throw std::invalid_argument("Network " + sourceSecond + " not found");
+    }
+    auto iterDest = networks.find(dest);
+    if (iterDest != networks.end())
+    {
+      throw std::invalid_argument("Network " + dest + " already exists");
+    }
+    iterDest = networks.emplace(dest, graph_type(iterFirst->second)).first;
+    auto& destNet = iterDest->second;
+    auto& secondNet =  networks.find(sourceSecond)->second;
+    copyConnections(secondNet, destNet);
+  }
+}
+
+std::size_t ohantsev::NetworkApp::countConnections(const graph_type::GraphMap& map)
+{
+  std::size_t countCnts = 0;
+  for (const auto& node: map)
+  {
+    countCnts += node.second.size();
+  }
+  return countCnts;
+}
+
+void ohantsev::NetworkApp::saveGraph(const graph_type::GraphMap& map, std::ofstream& fout)
+{
+  fout << ' ' << countConnections(map) << '\n';
+  for (const auto& node: map)
+  {
+    for (const auto& cnts: node.second)
+    {
+      fout << node.first << ' ' << cnts.first << ' ' << cnts.second << '\n';
     }
   }
+  fout << '\n';
 }
 
 void ohantsev::NetworkApp::save(const map_type& networks, std::istream& in)
 {
   std::string file;
-  in >> file;
-  if (!in)
+  if (in >> file)
   {
-    throw std::invalid_argument("Invalid arguments");
-  }
-  std::ofstream fout(file);
-  for (const auto& net: networks)
-  {
-    std::size_t countCnts = 0;
-    for (const auto& node: net.second.watch())
+    std::ofstream fout(file);
+    for (const auto& net: networks)
     {
-      countCnts += node.second.size();
+      fout << net.first;
+      saveGraph(net.second.watch(), fout);
     }
-    fout << net.first << ' ' << countCnts << '\n';
-    for (const auto& node: net.second.watch())
-    {
-      for (const auto& cnts: node.second)
-      {
-        fout << node.first << ' ' << cnts.first << ' ' << cnts.second << '\n';
-      }
-    }
-    fout << '\n';
   }
 }
 
@@ -464,15 +431,25 @@ void ohantsev::NetworkApp::input(const std::string& filename)
   {
     std::string name;
     graph_type graph;
-    if (!(in >> name >> graph) && !in.eof())
+    if (in >> name >> graph)
     {
-      throw std::invalid_argument("Invalid file");
+      object_.emplace(name, std::move(graph));
     }
-    if (in.eof())
-    {
-      return;
-    }
-    object_.emplace(name, std::move(graph));
+  }
+}
+
+void ohantsev::readConnection(std::istream& in, Graph<std::string>& graph)
+{
+  std::string from, to;
+  std::size_t weight;
+  if (!(in >> from >> to >> weight))
+  {
+    in.clear(in.rdstate() ^ std::ios::failbit);
+    in.ignore(std::numeric_limits< std::streamsize >::max(), '\n');
+  }
+  else
+  {
+    graph.link(from, to, weight);
   }
 }
 
@@ -488,13 +465,7 @@ std::istream& ohantsev::operator>>(std::istream& in, Graph< std::string >& graph
   {
     for (std::size_t i = 0; i < size; ++i)
     {
-      std::string from, to;
-      std::size_t weight;
-      if (!(in >> from >> to >> weight))
-      {
-        break;
-      }
-      graph.link(from, to, weight);
+      readConnection(in, graph);
     }
   }
   return in;
