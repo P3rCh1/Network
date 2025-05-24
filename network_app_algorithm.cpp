@@ -3,7 +3,8 @@
 #include <iostream>
 
 ohantsev::NetworkApp::NetworkApp(map_type& networks, std::istream& in, std::ostream& out):
-  CommandHandler(networks, in, out)
+  CommandHandler(in, out),
+  networks_(networks)
 {
   add("create", std::bind(create, std::ref(networks), std::ref(in)));
   add("delete_network", std::bind(deleteNetwork, std::ref(networks), std::ref(in)));
@@ -48,8 +49,8 @@ void ohantsev::NetworkApp::operator()()
   if (in_.fail())
   {
     in_.clear(in_.rdstate() ^ std::ios::failbit);
-    in_.ignore(std::numeric_limits< std::streamsize >::max(), '\n');
   }
+  in_.ignore(std::numeric_limits< std::streamsize >::max(), '\n');
 }
 
 void ohantsev::NetworkApp::create(map_type& networks, std::istream& in)
@@ -180,7 +181,7 @@ void ohantsev::NetworkApp::deleteDevice(map_type& networks, std::istream& in)
         throw std::invalid_argument("Device " + device + " not found");
       }
       throw std::invalid_argument("Device " + device +
-        " still connected\nUse force_delete_device to whatever remove with connections");
+                                  " still connected\nUse force_delete_device to whatever remove with connections");
     }
   }
 }
@@ -209,7 +210,7 @@ void ohantsev::NetworkApp::copy(map_type& networks, std::istream& in)
   std::string source;
   std::string dest;
   if (in >> source >> dest)
-    {
+  {
     auto iterSource = networks.find(source);
     if (iterSource == networks.end())
     {
@@ -432,21 +433,26 @@ void ohantsev::NetworkApp::input(const std::string& filename)
     graph_type graph;
     if (in >> name >> graph)
     {
-      object_.emplace(name, std::move(graph));
+      networks_.emplace(name, std::move(graph));
+    }
+    else
+    {
+      in.clear(in.rdstate() ^ std::ios::failbit);
+      skipGraph(in);
     }
   }
 }
 
-void ohantsev::readConnection(std::istream& in, Graph<std::string>& graph)
+void ohantsev::skipGraph(std::istream& in)
+{
+  for (std::string line; std::getline(in, line) && !line.empty(););
+}
+
+void ohantsev::readConnection(std::istream& in, Graph< std::string >& graph)
 {
   std::string from, to;
   std::size_t weight;
-  if (!(in >> from >> to >> weight))
-  {
-    in.clear(in.rdstate() ^ std::ios::failbit);
-    in.ignore(std::numeric_limits< std::streamsize >::max(), '\n');
-  }
-  else
+  if (in >> from >> to >> weight)
   {
     graph.link(from, to, weight);
   }
@@ -460,12 +466,10 @@ std::istream& ohantsev::operator>>(std::istream& in, Graph< std::string >& graph
     return in;
   }
   std::size_t size;
-  if (in >> size)
+  in >> size;
+  for (std::size_t i = 0; i < size && in; ++i)
   {
-    for (std::size_t i = 0; i < size; ++i)
-    {
-      readConnection(in, graph);
-    }
+    readConnection(in, graph);
   }
   return in;
 }

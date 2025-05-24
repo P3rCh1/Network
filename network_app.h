@@ -9,17 +9,20 @@
 
 namespace ohantsev
 {
-  class NetworkApp: public CommandHandler< std::unordered_map< std::string, Graph< std::string > > >
+  class NetworkApp: public CommandHandler
   {
   public:
     using graph_type = Graph< std::string >;
     using map_type = std::unordered_map< std::string, graph_type >;
     using outIter = std::ostream_iterator< std::string >;
+
     NetworkApp(map_type& networks, std::istream& in, std::ostream& out);
     void operator()() override;
     void input(const std::string& filename);
 
   private:
+    map_type& networks_;
+
     static void create(map_type& networks, std::istream& in);
     static void deleteNetwork(map_type& networks, std::istream& in);
     static void showAll(const map_type& networks, std::ostream& out);
@@ -55,5 +58,7 @@ namespace ohantsev
   };
 
   std::istream& operator>>(std::istream& in, Graph< std::string >& graph);
+  void skipGraph(std::istream& in);
+  void readConnection(std::istream& in, Graph< std::string >& graph);
 }
 #endif

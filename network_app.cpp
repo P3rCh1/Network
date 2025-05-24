@@ -5,7 +5,8 @@
 #include <numeric>
 
 ohantsev::NetworkApp::NetworkApp(map_type& networks, std::istream& in, std::ostream& out):
-  CommandHandler(networks, in, out)
+  CommandHandler(in, out),
+  networks_(networks)
 {
   add("create", std::bind(create, std::ref(networks), std::ref(in)));
   add("delete_network", std::bind(deleteNetwork, std::ref(networks), std::ref(in)));
@@ -50,8 +51,8 @@ void ohantsev::NetworkApp::operator()()
   if (in_.fail())
   {
     in_.clear(in_.rdstate() ^ std::ios::failbit);
-    in_.ignore(std::numeric_limits< std::streamsize >::max(), '\n');
   }
+  in_.ignore(std::numeric_limits< std::streamsize >::max(), '\n');
 }
 
 void ohantsev::NetworkApp::create(map_type& networks, std::istream& in)
@@ -482,8 +483,28 @@ void ohantsev::NetworkApp::input(const std::string& filename)
     graph_type graph;
     if (in >> name >> graph)
     {
-      object_.emplace(name, std::move(graph));
+      networks_.emplace(name, std::move(graph));
     }
+    else
+    {
+      in.clear(in.rdstate() ^ std::ios::failbit);
+      skipGraph(in);
+    }
+  }
+}
+
+void ohantsev::skipGraph(std::istream& in)
+{
+  for (std::string line; std::getline(in, line) && !line.empty(););
+}
+
+void ohantsev::readConnection(std::istream& in, Graph< std::string >& graph)
+{
+  std::string from, to;
+  std::size_t weight;
+  if (in >> from >> to >> weight)
+  {
+    graph.link(from, to, weight);
   }
 }
 
@@ -495,22 +516,10 @@ std::istream& ohantsev::operator>>(std::istream& in, Graph< std::string >& graph
     return in;
   }
   std::size_t size;
-  if (in >> size)
+  in >> size;
+  for (std::size_t i = 0; i < size && in; ++i)
   {
-    for (std::size_t i = 0; i < size; ++i)
-    {
-      std::string from, to;
-      std::size_t weight;
-      if (!(in >> from >> to >> weight))
-      {
-        in.clear(in.rdstate() ^ std::ios::failbit);
-        in.ignore(std::numeric_limits< std::streamsize >::max(), '\n');
-      }
-      else
-      {
-        graph.link(from, to, weight);
-      }
-    }
+    readConnection(in, graph);
   }
   return in;
 }
