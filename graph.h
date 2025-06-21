@@ -41,7 +41,6 @@ namespace ohantsev
     bool removeForce(const Key& key);
     bool removeLink(const Key& first, const Key& second);
     void removeCycles();
-    bool hasPath(const Key& start, const Key& end) const;
     Way path(const Key& start, const Key& end) const;
     template< bool AllowCycles >
     std::vector< Way > nPaths(const Key& start, const Key& end, std::size_t k) const;
@@ -423,41 +422,6 @@ namespace ohantsev
   }
 
   template< class Key, class Hash, class KeyEqual >
-  bool Graph< Key, Hash, KeyEqual >::hasPath(const Key& start, const Key& end) const
-  {
-    if (!contains(start) || !contains(end))
-    {
-      return false;
-    }
-    if (KeyEqual{}(start, end))
-    {
-      return true;
-    }
-    std::queue< Key > q;
-    std::unordered_set< Key, Hash, KeyEqual > visited;
-    q.push(start);
-    visited.insert(start);
-    while (!q.empty())
-    {
-      auto current = q.front();
-      q.pop();
-      for (const auto& pair: graph_.at(current))
-      {
-        const Key& neighbor = pair.first;
-        if (KeyEqual{}(neighbor, end))
-        {
-          return true;
-        }
-        if (visited.insert(neighbor).second)
-        {
-          q.push(neighbor);
-        }
-      }
-    }
-    return false;
-  }
-
-  template< class Key, class Hash, class KeyEqual >
   auto Graph< Key, Hash, KeyEqual >::path(const Key& start, const Key& end) const -> Way
   {
     if (!contains(start) || !contains(end))
@@ -584,7 +548,7 @@ namespace ohantsev
   template< bool AllowCycles >
   auto Graph< Key, Hash, KeyEqual >::nPaths(const Key& start, const Key& end, std::size_t k) const -> std::vector< Way >
   {
-    if (!hasPath(start, end))
+    if (path(start, end).length_ == 0)
     {
       return {};
     }
