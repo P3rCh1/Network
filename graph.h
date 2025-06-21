@@ -425,8 +425,36 @@ namespace ohantsev
   template< class Key, class Hash, class KeyEqual >
   bool Graph< Key, Hash, KeyEqual >::hasPath(const Key& start, const Key& end) const
   {
-    DSU temp_dsu(*this);
-    return temp_dsu.findRoot(start) == temp_dsu.findRoot(end);
+    if (!contains(start) || !contains(end))
+    {
+      return false;
+    }
+    if (KeyEqual{}(start, end))
+    {
+      return true;
+    }
+    std::queue< Key > q;
+    std::unordered_set< Key, Hash, KeyEqual > visited;
+    q.push(start);
+    visited.insert(start);
+    while (!q.empty())
+    {
+      auto current = q.front();
+      q.pop();
+      for (const auto& pair: graph_.at(current))
+      {
+        const Key& neighbor = pair.first;
+        if (KeyEqual{}(neighbor, end))
+        {
+          return true;
+        }
+        if (visited.insert(neighbor).second)
+        {
+          q.push(neighbor);
+        }
+      }
+    }
+    return false;
   }
 
   template< class Key, class Hash, class KeyEqual >
@@ -548,7 +576,7 @@ namespace ohantsev
     }
     for (const auto& neighbor: graph_.graph_.at(lastKey))
     {
-      connectNeighbor<>(current, neighbor.first, neighbor.second);
+      connectNeighbor< >(current, neighbor.first, neighbor.second);
     }
   }
 
