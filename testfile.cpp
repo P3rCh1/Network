@@ -314,7 +314,7 @@ void testNoCyclesPaths()
     g.link("A", "B", 1);
     g.link("B", "C", 2);
 
-    auto paths = g.nPathsNoCycles("A", "C", 2);
+    auto paths = g.nPaths< false >("A", "C", 2);
     std::vector< std::vector< std::string > > expected = { { "A", "B", "C" } };
 
     bool correct = comparePaths(paths, expected) && (paths[0].length_ == 3);
@@ -331,7 +331,7 @@ void testNoCyclesPaths()
     g.link("A", "D", 1);
     g.link("D", "C", 1);
 
-    auto paths = g.nPathsNoCycles("A", "C", 2);
+    auto paths = g.nPaths< false >("A", "C", 2);
     std::vector< std::vector< std::string > > expected = {
     { "A", "B", "C" },
     { "A", "D", "C" }
@@ -347,7 +347,7 @@ void testNoCyclesPaths()
     g.insert("A");
     g.insert("B");
 
-    auto paths = g.nPathsNoCycles("A", "B", 2);
+    auto paths = g.nPaths< false >("A", "B", 2);
     bool correct = paths.empty();
     allPassed &= correct;
     printTestResult(correct, "Disconnected graph should return empty paths");
@@ -365,7 +365,7 @@ void testNoCyclesPaths()
     g.link("A", "E", 5);
     g.link("E", "C", 1);
 
-    auto paths = g.nPathsNoCycles("A", "C", 3);
+    auto paths = g.nPaths< false >("A", "C", 3);
     std::vector< std::vector< std::string > > expected = {
     { "A", "B", "C" },
     { "A", "D", "C" },
@@ -386,7 +386,7 @@ void testNoCyclesPaths()
     g.link("A", "B", 1);
     g.link("B", "C", 1);
 
-    auto paths = g.nPathsNoCycles("A", "C", 5);
+    auto paths = g.nPaths< false >("A", "C", 5);
     std::vector< std::vector< std::string > > expected = { { "A", "B", "C" } };
 
     bool correct = comparePaths(paths, expected);
@@ -403,7 +403,7 @@ void testNoCyclesPaths()
     g.link("C", "D", 1);
     g.link("D", "B", 1);
 
-    auto paths = g.nPathsNoCycles("A", "C", 3);
+    auto paths = g.nPaths< false >("A", "C", 3);
     std::vector< std::vector< std::string > > expected = { { "A", "B", "C" }, { "A", "B", "D", "C" } };
 
     bool correct = comparePaths(paths, expected);
@@ -422,7 +422,7 @@ void testNoCyclesPaths()
     g.link("3", "4", 1);
     g.link("4", "5", 2);
 
-    auto paths = g.nPathsNoCycles("1", "5", 2);
+    auto paths = g.nPaths< false >("1", "5", 2);
     std::vector< std::vector< std::string > > expected = {
     { "1", "2", "5" },
     { "1", "3", "4", "5" }
@@ -466,7 +466,7 @@ void testWithCyclesPaths()
     g.link("C", "D", 1);
     g.link("D", "B", 1);
 
-    auto paths = g.nPaths("A", "C", 5);
+    auto paths = g.nPaths< true >("A", "C", 5);
 
     bool foundBasic = containsPath< std::string >(paths, { "A", "B", "C" });
     bool foundCyclePath = containsPath< std::string >(paths, { "A", "B", "D", "C" }) ||
@@ -485,7 +485,7 @@ void testWithCyclesPaths()
     g.link("B", "C", 1);
     g.link("C", "B", 1);
 
-    auto paths = g.nPaths("A", "C", 5);
+    auto paths = g.nPaths< true >("A", "C", 5);
 
     bool correct = containsPath< std::string >(paths, { "A", "B", "C" }) &&
                    (containsPath< std::string >(paths, { "A", "B", "A", "B", "C" }) ||
@@ -496,7 +496,7 @@ void testWithCyclesPaths()
     Graph< std::string > g;
     g.insert("A");
     g.insert("B");
-    bool correct = g.nPaths("A", "B", 2).empty();
+    bool correct = g.nPaths< true >("A", "B", 2).empty();
     allPassed &= correct;
     printTestResult(correct, "Disconnected graph returns empty");
   }

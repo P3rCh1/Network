@@ -1,8 +1,6 @@
 #include "network_app.h"
 #include <fstream>
 #include <iostream>
-#include <iterator>
-#include <numeric>
 
 ohantsev::NetworkApp::NetworkApp(map_type& networks, std::istream& in, std::ostream& out):
   CommandHandler(in, out),
@@ -73,36 +71,13 @@ void ohantsev::NetworkApp::deleteNetwork(map_type& networks, std::istream& in)
   }
 }
 
-std::string ohantsev::NetworkApp::getName(const map_type::value_type& pair)
-{
-  return pair.first;
-}
-
 void ohantsev::NetworkApp::showAll(const map_type& networks, std::ostream& out)
 {
-  std::transform(networks.begin(), networks.end(), outIter(out, "\n"), getName);
+  for (const auto& pair: networks)
+  {
+    out << pair.first << "\n";
+  }
 }
-
-struct ohantsev::NetworkApp::ConnectionPrinter
-{
-  std::ostream& out;
-
-  void operator()(const graph_type::ConnectionMap::value_type& cntPair) const
-  {
-    out << " -> " << cntPair.first << " " << cntPair.second << '\n';
-  }
-};
-
-struct ohantsev::NetworkApp::DeviceConnectionsPrinter
-{
-  std::ostream& out;
-
-  void operator()(const graph_type::GraphMap::value_type& nodesPair) const
-  {
-    out << "Device: " << nodesPair.first << '\n';
-    std::for_each(nodesPair.second.begin(), nodesPair.second.end(), ConnectionPrinter{ out });
-  }
-};
 
 void ohantsev::NetworkApp::showNetwork(const map_type& networks, std::istream& in, std::ostream& out)
 {
@@ -115,7 +90,14 @@ void ohantsev::NetworkApp::showNetwork(const map_type& networks, std::istream& i
       throw std::invalid_argument("Network " + name + " not found");
     }
     const auto& network = iter->second.watch();
-    std::for_each(network.begin(), network.end(), DeviceConnectionsPrinter{ out });
+    for (const auto& nodesPair: network)
+    {
+      out << "Device: " << nodesPair.first << '\n';
+      for (const auto& cntPair: nodesPair.second)
+      {
+        out << " -> " << cntPair.first << " " << cntPair.second << '\n';
+      }
+    }
   }
 }
 
@@ -199,7 +181,7 @@ void ohantsev::NetworkApp::deleteDevice(map_type& networks, std::istream& in)
         throw std::invalid_argument("Device " + device + " not found");
       }
       throw std::invalid_argument("Device " + device +
-        " still connected\nUse force_delete_device to whatever remove with connections");
+                                  " still connected\nUse force_delete_device to whatever remove with connections");
     }
   }
 }
@@ -228,7 +210,7 @@ void ohantsev::NetworkApp::copy(map_type& networks, std::istream& in)
   std::string source;
   std::string dest;
   if (in >> source >> dest)
-    {
+  {
     auto iterSource = networks.find(source);
     if (iterSource == networks.end())
     {
@@ -305,28 +287,24 @@ void ohantsev::NetworkApp::distance(const map_type& networks, std::istream& in, 
   }
 }
 
-struct ohantsev::NetworkApp::StepPrinter
+void ohantsev::NetworkApp::printWay(const graph_type::Way& way, std::ostream& out)
 {
-  std::ostream& out;
-
-  void operator()(const std::string& step) const
+  out << way.length_;
+  out << '\t' << way.steps_.front();
+  for (std::size_t i = 1; i < way.steps_.size(); i++)
   {
-    out << " -> " << step;
+    out << " -> " << way.steps_[i];
   }
-};
+  out << '\n';
+}
 
-struct ohantsev::NetworkApp::WayPrinter
+void ohantsev::NetworkApp::printWays(const std::vector< graph_type::Way >& ways, std::ostream& out)
 {
-  std::ostream& out;
-
-  void operator()(const graph_type::Way& way) const
+  for (const auto& way: ways)
   {
-    out << way.length_;
-    out << '\t' << way.steps_.front();
-    std::for_each(way.steps_.begin() + 1, way.steps_.end(), StepPrinter{ out });
-    out << '\n';
+    printWay(way, out);
   }
-};
+}
 
 template< bool AllowCycles >
 void ohantsev::NetworkApp::topPaths(const map_type& networks, std::istream& in, std::ostream& out)
@@ -353,8 +331,7 @@ void ohantsev::NetworkApp::topPaths(const map_type& networks, std::istream& in, 
   {
     throw std::invalid_argument("Device " + to + " not found");
   }
-  auto ways = network.nPaths< AllowCycles >(from, to, count);
-  std::for_each(ways.begin(), ways.end(), WayPrinter{ out });
+  printWays(network.nPaths< AllowCycles >(from, to, count), out);
 }
 
 void ohantsev::NetworkApp::topPathsWithCycles(const map_type& networks, std::istream& in, std::ostream& out)
@@ -367,26 +344,16 @@ void ohantsev::NetworkApp::topPathsNoCycles(const map_type& networks, std::istre
   topPaths< false >(networks, in, out);
 }
 
-struct ohantsev::NetworkApp::ConnectionAdder
+void ohantsev::NetworkApp::copyConnections(const graph_type& src, graph_type& dest)
 {
-  graph_type& dest;
-  const std::string& from;
-
-  void operator()(const graph_type::ConnectionMap::value_type& cnt) const
+  for (const auto& device: src.watch())
   {
-    dest.link(from, cnt.first, cnt.second);
+    for (const auto& cnt: device.second)
+    {
+      dest.link(device.first, cnt.first, cnt.second);
+    }
   }
-};
-
-struct ohantsev::NetworkApp::NetworkMerger
-{
-  graph_type& dest;
-
-  void operator()(const graph_type::GraphMap::value_type& device) const
-  {
-    std::for_each(device.second.begin(), device.second.end(), ConnectionAdder{ dest, device.first });
-  }
-};
+}
 
 void ohantsev::NetworkApp::merge(map_type& networks, std::istream& in)
 {
@@ -411,62 +378,45 @@ void ohantsev::NetworkApp::merge(map_type& networks, std::istream& in)
       throw std::invalid_argument("Network " + dest + " already exists");
     }
     graph_type destNet = (iterFirst->second);
-    auto& secondNetMap =  iterSecond->second.watch();
-    std::for_each(secondNetMap.begin(), secondNetMap.end(), NetworkMerger{ destNet });
+    copyConnections(iterSecond->second, destNet);
     networks.emplace(dest, std::move(destNet));
   }
 }
 
-struct ohantsev::NetworkApp::ConnectionSaver
+std::size_t ohantsev::NetworkApp::countConnections(const graph_type::GraphMap& map)
 {
-  std::ostream& out;
-  const std::string& from;
-
-  void operator()(const graph_type::ConnectionMap::value_type& cnt) const
+  std::size_t countCnts = 0;
+  for (const auto& node: map)
   {
-    out << from << " " << cnt.first << " " << cnt.second << "\n";
+    countCnts += node.second.size();
   }
-};
+  return countCnts;
+}
 
-struct ohantsev::NetworkApp::ConnectionCounter
+void ohantsev::NetworkApp::saveGraph(const graph_type::GraphMap& map, std::ofstream& fout)
 {
-  std::size_t operator()(std::size_t sum, const graph_type::GraphMap::value_type& nodePair) const
+  fout << ' ' << countConnections(map) << '\n';
+  for (const auto& node: map)
   {
-    return sum + nodePair.second.size();
+    for (const auto& cnts: node.second)
+    {
+      fout << node.first << ' ' << cnts.first << ' ' << cnts.second << '\n';
+    }
   }
-};
-
-struct ohantsev::NetworkApp::DeviceSaver
-{
-  std::ostream& out;
-
-  void operator()(const graph_type::GraphMap::value_type& device) const
-  {
-    std::for_each(device.second.begin(), device.second.end(), ConnectionSaver{ out, device.first });
-  }
-};
-
-struct ohantsev::NetworkApp::NetworkSaver
-{
-  std::ostream& out;
-
-  void operator()(const map_type::value_type& network) const
-  {
-    auto& graph = network.second.watch();
-    size_t count = std::accumulate(graph.begin(), graph.end(), 0, ConnectionCounter{});
-    out << network.first << " " << count << "\n";
-    std::for_each(graph.begin(), graph.end(), DeviceSaver{ out });
-    out << "\n";
-  }
-};
+  fout << '\n';
+}
 
 void ohantsev::NetworkApp::save(const map_type& networks, std::istream& in)
 {
-  std::string filename;
-  if (in >> filename)
+  std::string file;
+  if (in >> file)
   {
-    std::ofstream fout(filename);
-    std::for_each(networks.begin(), networks.end(), NetworkSaver{ fout });
+    std::ofstream fout(file);
+    for (const auto& net: networks)
+    {
+      fout << net.first;
+      saveGraph(net.second.watch(), fout);
+    }
   }
 }
 

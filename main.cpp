@@ -1,9 +1,11 @@
 #include <iostream>
 #include "hash_map.h"
-#include "network_app_algorithm.h"
+#include "benchmark.h"
+#include "network_app.h"
 
 int main(int argc, char** argv)
 {
+  //run_benchmark();
   using ohantsev::NetworkApp;
   using ohantsev::Graph;
 

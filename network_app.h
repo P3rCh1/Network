@@ -2,9 +2,8 @@
 #define NETWORK_H
 #include <string>
 #include <iosfwd>
-#include <iterator>
-#include <unordered_map>
 #include "graph.h"
+#include "hash_map.h"
 #include "command_handler.h"
 
 namespace ohantsev
@@ -13,7 +12,7 @@ namespace ohantsev
   {
   public:
     using graph_type = Graph< std::string >;
-    using map_type = std::unordered_map< std::string, graph_type >;
+    using map_type = HashMap< std::string, graph_type >;
     using outIter = std::ostream_iterator< std::string >;
 
     NetworkApp(map_type& networks, std::istream& in, std::ostream& out);
@@ -40,21 +39,13 @@ namespace ohantsev
     static void topPaths(const map_type& networks, std::istream& in, std::ostream& out);
     static void topPathsWithCycles(const map_type& networks, std::istream& in, std::ostream& out);
     static void topPathsNoCycles(const map_type& networks, std::istream& in, std::ostream& out);
+    static void copyConnections(const graph_type& src, graph_type& dest);
     static void merge(map_type& networks, std::istream& in);
     static void save(const map_type& networks, std::istream& in);
-
-    static std::string getName(const map_type::value_type& pair);
-
-    struct WayPrinter;
-    struct DeviceConnectionsPrinter;
-    struct ConnectionPrinter;
-    struct StepPrinter;
-    struct ConnectionAdder;
-    struct NetworkMerger;
-    struct NetworkSaver;
-    struct ConnectionSaver;
-    struct DeviceSaver;
-    struct ConnectionCounter;
+    static std::size_t countConnections(const graph_type::GraphMap& map);
+    static void saveGraph(const graph_type::GraphMap& map, std::ofstream& fout);
+    static void printWay(const graph_type::Way& way, std::ostream& out);
+    static void printWays(const std::vector< graph_type::Way >& ways, std::ostream& out);
   };
 
   std::istream& operator>>(std::istream& in, Graph< std::string >& graph);
