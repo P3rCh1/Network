@@ -2,7 +2,7 @@
 #define BENCHMARK_H
 #include <chrono>
 #include <iostream>
-#include "graph.h"
+#include "../graph.h"
 
 ohantsev::Graph< int > createGraph(int n)
 {
@@ -25,18 +25,18 @@ ohantsev::Graph< int > createGraph(int n)
 void run_benchmark()
 {
   setlocale(LC_ALL, "ru");
-  for (int n = 5; n <= 25; n+=1)
-  {
-    std::cout << "=== Размер графа: " << n << " вершин ===\n";
-    auto g = createGraph(n);
-    auto start = std::chrono::high_resolution_clock::now();
-    auto ways = g.nPaths< true >(0, n - 1, 5);
-    auto end = std::chrono::high_resolution_clock::now();
-    auto nPaths_time = std::chrono::duration_cast< std::chrono::microseconds >(end - start);
-    std::cout << "Пути: " << nPaths_time.count() << " мкс" << std::endl;
-  }
+  // for (int n = 5; n <= 25; n+=1)
+  // {
+  //   std::cout << "=== Размер графа: " << n << " вершин ===\n";
+  //   auto g = createGraph(n);
+  //   auto start = std::chrono::high_resolution_clock::now();
+  //   auto ways = g.nPaths< true >(0, n - 1, 5);
+  //   auto end = std::chrono::high_resolution_clock::now();
+  //   auto nPaths_time = std::chrono::duration_cast< std::chrono::microseconds >(end - start);
+  //   std::cout << "Пути: " << nPaths_time.count() << " мкс" << std::endl;
+  // }
 
-  for (int n = 1000; n <= 20000; n+=1000)
+  for (int n = 2000; n <= 40000; n+=2000)
   {
     std::cout << "=== Размер графа: " << n << " вершин ===\n";
     auto g = createGraph(n);

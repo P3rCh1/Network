@@ -1,7 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include "graph_algorithms.h"
+#include "graph.h"
 
 using ohantsev::Graph;
 
