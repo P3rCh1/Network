@@ -10,7 +10,6 @@ add_executable(
         main.cpp
         hash_map.h
         fwd_list.h
-        vector_hash.h
         command_handler.cpp
         command_handler.h
         network_app.cpp

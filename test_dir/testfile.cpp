@@ -45,8 +45,8 @@ void testLinkOperations()
   allPassed &= g.link("A", "B", 5);
   printTestResult(allPassed, "Create valid link");
 
-  allPassed &= !g.link("A", "D", 3);
-  printTestResult(!g.link("A", "D", 3), "Reject invalid link");
+  allPassed &= g.link("D", "A", 3);
+  printTestResult(!g.link("A", "D", 3), "Create item using link");
 
   allPassed &= !g.link("A", "A", 0);
   printTestResult(!g.link("A", "A", 0), "Reject self-link");
